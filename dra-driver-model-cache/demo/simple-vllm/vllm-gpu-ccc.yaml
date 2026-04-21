@@ -1,0 +1,21 @@
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: vllm-gpu-ccc
+spec:
+  nodePoolAutoCreation:
+    enabled: true
+  autoscalingPolicy:
+    consolidationDelayMinutes: 3
+  priorities:
+  - nodepools:
+    - a100-2-pool-a
+    - a100-2-pool-b
+    - a100-2-pool-c
+    - a100-2-pool-f
+    - l4-2-pool-a
+    - l4-2-pool-b
+    - l4-2-pool-c
+    - t4-4-pool-a
+    - t4-4-pool-b
+    - t4-4-pool-c

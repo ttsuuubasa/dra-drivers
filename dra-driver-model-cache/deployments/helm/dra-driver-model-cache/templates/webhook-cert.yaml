@@ -1,0 +1,19 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "dra-driver-model-cache.fullname" . }}-webhook-cert
+  namespace: {{ include "dra-driver-model-cache.namespace" . }}
+  labels:
+    {{- include "dra-driver-model-cache.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+spec:
+  dnsNames:
+    {{- $svcName := printf "%s-webhook" (include "dra-driver-model-cache.fullname" .) }}
+    {{- $svcNamespace := (include "dra-driver-model-cache.namespace" .) }}
+    - {{ $svcName }}.{{ $svcNamespace }}.svc
+  issuerRef:
+    kind: Issuer
+    name: {{ include "dra-driver-model-cache.fullname" . }}-webhook-issuer
+  secretName: {{ include "dra-driver-model-cache.fullname" . }}-webhook-cert
+{{- end }}

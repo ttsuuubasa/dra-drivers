@@ -1,0 +1,24 @@
+---
+apiVersion: {{ include "dra-driver-model-cache.resourceApiVersion" . }}
+kind: DeviceClass
+metadata:
+  name: hf.{{ include "dra-driver-model-cache.driverName" . }}
+spec:
+  selectors:
+  - cel:
+      expression: "device.driver == '{{ include "dra-driver-model-cache.driverName" . }}'"
+  - cel:
+      expression: "device.attributes['{{ include "dra-driver-model-cache.driverName" . }}'].provider == 'huggingface'"
+  - cel:
+      expression: "device.attributes['{{ include "dra-driver-model-cache.driverName" . }}'].id == '*'"
+---
+apiVersion: {{ include "dra-driver-model-cache.resourceApiVersion" . }}
+kind: DeviceClass
+metadata:
+  name: cached.{{ include "dra-driver-model-cache.driverName" . }}
+spec:
+  selectors:
+  - cel:
+      expression: "device.driver == '{{ include "dra-driver-model-cache.driverName" . }}'"
+  - cel:
+      expression: "device.attributes['{{ include "dra-driver-model-cache.driverName" . }}'].cached == true"

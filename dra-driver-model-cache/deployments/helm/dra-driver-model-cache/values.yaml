@@ -1,0 +1,97 @@
+# Default values for draexample--driver.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+nameOverride: ""
+fullnameOverride: ""
+namespaceOverride: ""
+selectorLabelsOverride: {}
+
+allowDefaultNamespace: false
+
+# deviceProfile describes the overall shape of the devices managed by the
+# driver. Available profiles are:
+#   - "modelcache": Node-local devices configurable through opaque config
+deviceProfile: "modelcache"
+
+# driverName uniquely identifies the driver within the cluster. When empty, its
+# value is derived from the deviceProfile.
+driverName: "modelcache.x-k8s.io"
+
+imagePullSecrets: []
+image:
+  repository: us-central1-docker.pkg.dev/jbelamaric-dev/jbelamaric-dev/dra-driver-model-cache
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "v0.2.12"
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+kubeletPlugin:
+  # numDevices describes how many GPUs to advertise on each node when the "modelcache"
+  # deviceProfile is used. Not relevant for other profiles.
+  numDevices: 9
+  priorityClassName: ""
+  updateStrategy:
+    type: RollingUpdate
+  podAnnotations: {}
+  podSecurityContext: {}
+  nodeSelector:
+    cloud.google.com/compute-class: "vllm-gpu-ccc"
+  tolerations:
+    - key: "cloud.google.com/compute-class"
+      operator: "Equal"
+      value: "vllm-gpu-ccc"
+      effect: "NoSchedule"
+    - key: "nvidia.com/gpu"
+      operator: "Equal"
+      value: "present"
+      effect: "NoSchedule"
+  affinity: {}
+  kubeletRegistrarDirectoryPath: /var/lib/kubelet/plugins_registry
+  kubeletPluginsDirectoryPath: /var/lib/kubelet/plugins
+  containers:
+    init:
+      securityContext: {}
+      resources: {}
+    plugin:
+      securityContext:
+        privileged: true
+      resources: {}
+      # Port running a gRPC health service checked by a livenessProbe.
+      # Set to a negative value to disable the service and the probe.
+      healthcheckPort: 51515
+
+webhook:
+  enabled: true
+  servicePort: 443
+  containerPort: 443
+  priorityClassName: ""
+  strategy:
+    type: RollingUpdate
+  podAnnotations: {}
+  podSecurityContext: {}
+  nodeSelector:
+    cloud.google.com/gke-nodepool: default-pool
+  tolerations: []
+  affinity: {}
+  containers:
+    webhook:
+      securityContext:
+        privileged: false
+      resources: {}
+  serviceAccount:
+    # Specifies whether a service account should be created
+    create: true
+    # Annotations to add to the service account
+    annotations: {}
+    # The name of the service account to use.
+    # If not set and create is true, a name is generated using the fullname template
+    name: ""

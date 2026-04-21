@@ -1,0 +1,109 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-gemma-4-e4b-it
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-gemma-4-e4b-it
+  template:
+    metadata:
+      labels:
+        app: vllm-gemma-4-e4b-it
+    spec:
+      nodeSelector:
+        cloud.google.com/compute-class: vllm-gpu-ccc
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      resourceClaims:
+      - name: gpu
+        resourceClaimTemplateName: gemma-4-e4b-it-gpu
+      - name: model
+        resourceClaimTemplateName: gemma-4-e4b-it-model
+      containers:
+      - name: vllm-gpu
+        image: vllm/vllm-openai:gemma4
+        command: ["/bin/bash", "-c"]
+        args:
+        - "python3 -m vllm.entrypoints.openai.api_server --host=0.0.0.0 --port=8000 --model=${MODEL_PATH} --served-model-name ${MODEL_NAME}"
+        ports:
+        - containerPort: 8000
+        resources:
+          claims:
+          - name: model
+          - name: gpu
+        readinessProbe:
+          tcpSocket:
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: gemma-4-e4b-it-gpu
+spec:
+  spec:
+    devices:
+      requests:
+      - name: gpu
+        exactly:
+          count: 1
+          deviceClassName: gpu.nvidia.com
+          selectors:
+          - cel:
+              expression: "device.capacity['gpu.nvidia.com'].memory.compareTo(quantity('24Gi')) >= 0"
+          - cel:
+              expression: "device.capacity['gpu.nvidia.com'].memory.compareTo(quantity('40Gi')) <= 0"
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: gemma-4-e4b-it-model
+spec:
+  spec:
+    devices:
+      requests:
+      - name: model
+        firstAvailable:
+        - name: cached-model
+          deviceClassName: cached.modelcache.x-k8s.io
+          selectors:
+          - cel:
+              expression: "device.attributes['modelcache.x-k8s.io'].id == 'google/gemma-4-E4B-it'"
+        - name: huggingface-model
+          deviceClassName: hf.modelcache.x-k8s.io
+      config:
+      - requests: ["model"]
+        opaque:
+          driver: modelcache.x-k8s.io
+          parameters:
+            apiVersion: modelcache.x-k8s.io/v1
+            kind: ModelLoader
+            provider: huggingface
+            modelId: google/gemma-4-E4B-it
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-gemma-4-e4b-it
+spec:
+  selector:
+    app: vllm-gemma-4-e4b-it
+  type: LoadBalancer	
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8000  
+      targetPort: 8000

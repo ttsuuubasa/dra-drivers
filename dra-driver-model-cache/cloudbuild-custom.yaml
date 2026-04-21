@@ -1,0 +1,16 @@
+options:
+  machineType: E2_HIGHCPU_32
+steps:
+- name: golang:1.25.5
+  entrypoint: /bin/bash
+  args:
+  - -c
+  - |
+    export IMAGE_GIT_TAG=v0.2.8
+    export CHART_GIT_TAG=v0.2.8
+    go install sigs.k8s.io/controller-tools/cmd/controller-gen@latest
+    export PATH=$$PATH:$$(go env GOPATH)/bin
+    controller-gen object:headerFile=hack/boilerplate.generatego.txt paths=./api/modelcache.x-k8s.io/v1/... output:object:dir=./api/modelcache.x-k8s.io/v1
+- name: gcr.io/cloud-builders/docker
+  args: ['build', '--pull', '-t', 'us-central1-docker.pkg.dev/jbelamaric-dev/jbelamaric-dev/dra-driver-model-cache:v0.2.8', '-f', 'deployments/container/Dockerfile', '--build-arg', 'GOLANG_VERSION=1.25.5', '--build-arg', 'BASE_IMAGE=docker.io/ubuntu:22.04', '--build-arg', 'VERSION=v0.2.8', '.']
+images: ['us-central1-docker.pkg.dev/jbelamaric-dev/jbelamaric-dev/dra-driver-model-cache:v0.2.8']
