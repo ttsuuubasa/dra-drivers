@@ -245,9 +245,9 @@ func (p *HuggingFaceProvider) PrepareClaims(claimUID string, config runtime.Obje
 			}
 			edits[result.Device].ContainerEdits.Hooks = []*cdispec.Hook{
 				{
-					HookName: "startContainer",
+					HookName: "createContainer",
 					Path:     "/bin/sh",
-					Args:     []string{"-c", fmt.Sprintf("while [ ! -f %s ]; do sleep 5; done", filepath.Join(snapshotPath, ".complete"))},
+					Args:     []string{"sh", "-c", fmt.Sprintf("while [ ! -f %s ]; do sleep 5; done", filepath.Join(snapshotPath, ".complete"))},
 					Timeout:  ptr.To(timeout),
 				},
 			}

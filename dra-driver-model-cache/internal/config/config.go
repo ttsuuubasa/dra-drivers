@@ -31,7 +31,7 @@ type HuggingFaceConfig struct {
 
 type GCSConfig struct {
 	Enabled bool `yaml:"enabled"`
-	Timeout    int    `yaml:"timeout,omitempty"`
+	Timeout int  `yaml:"timeout,omitempty"`
 }
 
 type ProvidersConfig struct {

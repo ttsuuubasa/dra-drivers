@@ -54,7 +54,7 @@ func NewGCSProvider(cm *cache.CacheManager, timeout int) *GCSProvider {
 func (p *GCSProvider) DiscoverModels(path string) (string, int64, bool) {
 	// GCS cache uses: <root>/gcs/<modelID>
 	// The path passed in is the directory being inspected.
-	
+
 	gcsRoot := p.CacheDirectory()
 	if !strings.HasPrefix(path, gcsRoot) || path == gcsRoot {
 		return "", 0, false
@@ -208,9 +208,9 @@ func (p *GCSProvider) PrepareClaims(claimUID string, config runtime.Object, resu
 			}
 			edits[result.Device].ContainerEdits.Hooks = []*cdispec.Hook{
 				{
-					HookName: "startContainer",
+					HookName: "createContainer",
 					Path:     "/bin/sh",
-					Args:     []string{"-c", fmt.Sprintf("while [ ! -f %s ]; do sleep 5; done", filepath.Join(hostPath, ".complete"))},
+					Args:     []string{"sh", "-c", fmt.Sprintf("while [ ! -f %s ]; do sleep 5; done", filepath.Join(hostPath, ".complete"))},
 					Timeout:  ptr.To(timeout),
 				},
 			}

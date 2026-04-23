@@ -31,8 +31,8 @@ import (
 )
 
 type mockModelRepo struct {
-	info *hfapi.RepoInfo
-	err  error
+	info          *hfapi.RepoInfo
+	err           error
 	downloadCount int
 }
 
