@@ -23,7 +23,7 @@ image:
   repository: us-central1-docker.pkg.dev/jbelamaric-dev/jbelamaric-dev/dra-driver-model-cache
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "v0.2.12"
+  tag: "v0.2.21"
 
 serviceAccount:
   # Specifies whether a service account should be created

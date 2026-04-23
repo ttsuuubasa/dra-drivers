@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+echo "Removing vllm deployments..."
+
+for file in vllm-gemma-4-*.yaml vllm-phi-2.yaml vllm-opt-125m.yaml; do
+  kubectl delete -f $file || echo
+done
+
 # Embedded cleanup manifest
 MANIFEST=$(cat <<'EOF'
 apiVersion: apps/v1
@@ -37,6 +43,7 @@ spec:
           chroot /host crictl rmi --prune
           echo "Cleaning up model caches..."
           chroot /host rm -rf /var/lib/model-cache/google /var/lib/model-cache/huggingface
+          chroot /host /bin/bash -c "rm -rf /var/run/cdi/k8s.modelcache.x-k8s.io*"
           echo "Cleanup complete. Sleeping indefinitely to prevent restarts."
           sleep infinity
         securityContext:

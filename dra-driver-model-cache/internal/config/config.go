@@ -26,10 +26,12 @@ import (
 type HuggingFaceConfig struct {
 	Enabled    bool   `yaml:"enabled"`
 	SecretName string `yaml:"secretName"`
+	Timeout    int    `yaml:"timeout,omitempty"`
 }
 
 type GCSConfig struct {
 	Enabled bool `yaml:"enabled"`
+	Timeout int  `yaml:"timeout,omitempty"`
 }
 
 type ProvidersConfig struct {

@@ -58,12 +58,13 @@ type HuggingFaceProvider struct {
 	cacheManager *cache.CacheManager
 	authToken    string
 	hfApi        HuggingFaceAPI
+	timeout      int
 
 	mu               sync.Mutex
 	ongoingDownloads map[string]chan struct{}
 }
 
-func NewHuggingFaceProvider(cm *cache.CacheManager, token string) *HuggingFaceProvider {
+func NewHuggingFaceProvider(cm *cache.CacheManager, token string, timeout int) *HuggingFaceProvider {
 	builder, _ := hfapi.NewApiBuilder()
 	if token != "" {
 		builder.WithToken(token)
@@ -76,6 +77,7 @@ func NewHuggingFaceProvider(cm *cache.CacheManager, token string) *HuggingFacePr
 		cacheManager:     cm,
 		authToken:        token,
 		hfApi:            &realHFAPI{api: builder.Build()},
+		timeout:          timeout,
 		ongoingDownloads: make(map[string]chan struct{}),
 	}
 }
@@ -170,6 +172,7 @@ func (p *HuggingFaceProvider) PrepareClaims(claimUID string, config runtime.Obje
 
 	for _, result := range results {
 		var modelID string
+		downloadInProgress := false
 		if result.Device == "provider-huggingface" {
 			loader, ok := config.(*configapi.ModelLoader)
 			if !ok {
@@ -180,10 +183,17 @@ func (p *HuggingFaceProvider) PrepareClaims(claimUID string, config runtime.Obje
 			// Ensure model is downloaded
 			if _, err := p.cacheManager.UseModel(modelID, claimUID); err != nil {
 				klog.InfoS("Model not in cache, downloading", "modelID", modelID)
-				if err := p.downloadModel(modelID); err != nil {
-					return nil, fmt.Errorf("failed to download model %s: %w", modelID, err)
+				err := p.downloadModel(modelID)
+				if err != nil {
+					if err.Error() == "download in progress" {
+						downloadInProgress = true
+					} else {
+						return nil, fmt.Errorf("failed to download model %s: %w", modelID, err)
+					}
 				}
-				p.cacheManager.UseModel(modelID, claimUID)
+				if !downloadInProgress {
+					p.cacheManager.UseModel(modelID, claimUID)
+				}
 			}
 		} else {
 			// Find modelID from device attributes
@@ -204,10 +214,13 @@ func (p *HuggingFaceProvider) PrepareClaims(claimUID string, config runtime.Obje
 		}
 
 		// Determine the snapshot path to mount
-		snapshotPath, err := p.getSnapshotPath(modelID)
+		repo := p.hfApi.Model(modelID)
+		info, err := repo.Info()
 		if err != nil {
 			return nil, err
 		}
+		dirName := "models--" + strings.ReplaceAll(modelID, "/", "--")
+		snapshotPath := filepath.Join(p.CacheDirectory(), dirName, "snapshots", info.Sha)
 
 		edits[result.Device] = &cdiapi.ContainerEdits{
 			ContainerEdits: &cdispec.ContainerEdits{
@@ -223,6 +236,21 @@ func (p *HuggingFaceProvider) PrepareClaims(claimUID string, config runtime.Obje
 					fmt.Sprintf("MODEL_NAME=%s", modelID),
 				},
 			},
+		}
+
+		if downloadInProgress {
+			timeout := p.timeout
+			if timeout == 0 {
+				timeout = 7200 // default to 2 hours
+			}
+			edits[result.Device].ContainerEdits.Hooks = []*cdispec.Hook{
+				{
+					HookName: "createContainer",
+					Path:     "/bin/sh",
+					Args:     []string{"sh", "-c", fmt.Sprintf("while [ ! -f %s ]; do sleep 5; done", filepath.Join(snapshotPath, ".complete"))},
+					Timeout:  ptr.To(timeout),
+				},
+			}
 		}
 	}
 
@@ -294,6 +322,11 @@ func (p *HuggingFaceProvider) downloadModel(modelID string) error {
 
 		if _, err := p.cacheManager.AddModel(modelID, size); err != nil {
 			klog.ErrorS(err, "failed to add model to cache manager in background")
+		}
+
+		sentinelFile := filepath.Join(snapshotPath, ".complete")
+		if err := os.WriteFile(sentinelFile, []byte("complete"), 0644); err != nil {
+			klog.ErrorS(err, "failed to create sentinel file", "file", sentinelFile)
 		}
 	}()
 

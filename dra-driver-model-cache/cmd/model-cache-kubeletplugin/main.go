@@ -246,10 +246,10 @@ func newApp() *cli.App {
 			}
 
 			if cfg.Providers.HuggingFace.Enabled {
-				drvConfig.huggingface = huggingface.NewHuggingFaceProvider(cm, os.Getenv("HF_TOKEN"))
+				drvConfig.huggingface = huggingface.NewHuggingFaceProvider(cm, os.Getenv("HF_TOKEN"), cfg.Providers.HuggingFace.Timeout)
 			}
 			if cfg.Providers.GCS.Enabled {
-				drvConfig.gcs = gcs.NewGCSProvider(cm)
+				drvConfig.gcs = gcs.NewGCSProvider(cm, cfg.Providers.GCS.Timeout)
 			}
 
 			// Scan for existing models

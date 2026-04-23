@@ -37,14 +37,16 @@ import (
 
 type GCSProvider struct {
 	cacheManager *cache.CacheManager
+	timeout      int
 
 	mu               sync.Mutex
 	ongoingDownloads map[string]chan struct{}
 }
 
-func NewGCSProvider(cm *cache.CacheManager) *GCSProvider {
+func NewGCSProvider(cm *cache.CacheManager, timeout int) *GCSProvider {
 	return &GCSProvider{
 		cacheManager:     cm,
+		timeout:          timeout,
 		ongoingDownloads: make(map[string]chan struct{}),
 	}
 }
@@ -52,7 +54,7 @@ func NewGCSProvider(cm *cache.CacheManager) *GCSProvider {
 func (p *GCSProvider) DiscoverModels(path string) (string, int64, bool) {
 	// GCS cache uses: <root>/gcs/<modelID>
 	// The path passed in is the directory being inspected.
-	
+
 	gcsRoot := p.CacheDirectory()
 	if !strings.HasPrefix(path, gcsRoot) || path == gcsRoot {
 		return "", 0, false
@@ -133,6 +135,7 @@ func (p *GCSProvider) PrepareClaims(claimUID string, config runtime.Object, resu
 
 	for _, result := range results {
 		var modelID string
+		downloadInProgress := false
 		if result.Device == "provider-gcs" {
 			loader, ok := config.(*configapi.ModelLoader)
 			if !ok {
@@ -143,10 +146,17 @@ func (p *GCSProvider) PrepareClaims(claimUID string, config runtime.Object, resu
 			// Download model if not cached
 			if _, err := p.cacheManager.UseModel(modelID, claimUID); err != nil {
 				klog.InfoS("Model not in cache, downloading from GCS", "modelID", modelID)
-				if err := p.downloadModel(modelID); err != nil {
-					return nil, err
+				err := p.downloadModel(modelID)
+				if err != nil {
+					if err.Error() == "download in progress" {
+						downloadInProgress = true
+					} else {
+						return nil, fmt.Errorf("failed to download model %s: %w", modelID, err)
+					}
 				}
-				p.cacheManager.UseModel(modelID, claimUID)
+				if !downloadInProgress {
+					p.cacheManager.UseModel(modelID, claimUID)
+				}
 			}
 		} else {
 			// Find modelID from device attributes
@@ -169,8 +179,10 @@ func (p *GCSProvider) PrepareClaims(claimUID string, config runtime.Object, resu
 		hostPath := filepath.Join(p.CacheDirectory(), modelID)
 		containerPath := "/models/" + modelID
 
-		if _, err := os.Stat(hostPath); err != nil {
-			return nil, fmt.Errorf("model directory %s not found: %w", hostPath, err)
+		if !downloadInProgress {
+			if _, err := os.Stat(hostPath); err != nil {
+				return nil, fmt.Errorf("model directory %s not found: %w", hostPath, err)
+			}
 		}
 
 		edits[result.Device] = &cdiapi.ContainerEdits{
@@ -187,6 +199,21 @@ func (p *GCSProvider) PrepareClaims(claimUID string, config runtime.Object, resu
 					fmt.Sprintf("MODEL_NAME=%s", modelID),
 				},
 			},
+		}
+
+		if downloadInProgress {
+			timeout := p.timeout
+			if timeout == 0 {
+				timeout = 7200 // default to 2 hours
+			}
+			edits[result.Device].ContainerEdits.Hooks = []*cdispec.Hook{
+				{
+					HookName: "createContainer",
+					Path:     "/bin/sh",
+					Args:     []string{"sh", "-c", fmt.Sprintf("while [ ! -f %s ]; do sleep 5; done", filepath.Join(hostPath, ".complete"))},
+					Timeout:  ptr.To(timeout),
+				},
+			}
 		}
 	}
 
@@ -239,6 +266,11 @@ func (p *GCSProvider) downloadModel(modelID string) error {
 
 		if _, err := p.cacheManager.AddModel(modelID, size); err != nil {
 			klog.ErrorS(err, "failed to add model to cache manager in background", "modelID", modelID)
+		}
+
+		sentinelFile := filepath.Join(modelDir, ".complete")
+		if err := os.WriteFile(sentinelFile, []byte("complete"), 0644); err != nil {
+			klog.ErrorS(err, "failed to create sentinel file", "file", sentinelFile)
 		}
 	}()
 
