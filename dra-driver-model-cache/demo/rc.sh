@@ -15,14 +15,12 @@
 # limitations under the License.
 
 kubectl get resourceclaim -n default -o json | jq -r '
-  ["NAME", "STATE", "NODE", "POD", "DEVICES"],
+  ["NAME", "STATE", "DEVICES"],
   (.items[] | [
     .metadata.name,
     (if .status.allocation and ((.status.reservedFor // []) | length > 0) then "allocated,reserved" 
      elif .status.allocation then "allocated" 
      elif ((.status.reservedFor // []) | length > 0) then "reserved" 
      else "pending" end),
-    (if .status.allocation then (.status.allocation.nodeSelector.nodeSelectorTerms[0].matchFields[]? | select(.key == "metadata.name") | .values[0]) // "" else "" end),
-    ([.status.reservedFor[]?.name] | join(", ")),
     ([.status.allocation.devices.results[]? | "\(.driver)/\(.device)"] | join(", "))
   ]) | @tsv' | column -t -s $'\t'

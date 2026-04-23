@@ -15,6 +15,4 @@
 # limitations under the License.
 
 
-KUBE_CONTEXT=${KUBE_CONTEXT:-gke_jbelamaric-dev_us-central1_dra}
-
-kubectl --context $KUBE_CONTEXT get resourceslices -o json | jq -r '["NODE", "NAME", "PROVIDER", "ID", "CACHED"], ((if .kind == "List" then .items[] else .object // . end) | [select(.spec.driver == "modelcache.x-k8s.io") as $slice | $slice.spec.devices[] | {nodeName: $slice.spec.nodeName, name: .name, provider: .attributes.provider.string, id: .attributes.id.string, cached: (.attributes.cached.bool | tostring)}] | sort_by([.nodeName, .name])[] | [.nodeName, .name, .provider, .id, .cached]) | @tsv' | column -t -s $'\t'
+kubectl ${KUBE_CONTEXT:+--context "$KUBE_CONTEXT"} get resourceslices -o json | jq -r '["NODE", "NAME", "PROVIDER", "ID", "CACHED"], ((if .kind == "List" then .items[] else .object // . end) | [select(.spec.driver == "modelcache.x-k8s.io") as $slice | $slice.spec.devices[] | {nodeName: $slice.spec.nodeName, name: .name, provider: .attributes.provider.string, id: .attributes.id.string, cached: (.attributes.cached.bool | tostring)}] | sort_by([.nodeName, .name])[] | [.nodeName, .name, .provider, .id, .cached]) | @tsv' | column -t -s $'\t'
