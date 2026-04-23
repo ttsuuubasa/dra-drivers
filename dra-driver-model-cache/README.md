@@ -26,7 +26,7 @@ model to identify which providers it is able to access.
 For example, this ResourceSlice advertises that it has locally cached the
 google/gemma-4-31B-it model, and is able to download models from Hugging Face.
 
-```
+```yaml
 apiVersion: resource.k8s.io/v1
 kind: ResourceSlice
 metadata:
@@ -63,7 +63,7 @@ The driver also defines a couple of device classes, to make the ResourceClaims
 a little bit simpler. There is one DeviceClass for cached models, and one for
 the stub model.
 
-```
+```yaml
 apiVersion: resource.k8s.io/v1
 kind: DeviceClass
 metadata:
@@ -89,7 +89,7 @@ spec:
       expression: 'device.attributes["modelcache.x-k8s.io"].cached == true'
 ```
 
-To use this, a `ResourceClaimTemplate` makes use of the `firstAvailable` field
+To use this, a ResourceClaimTemplate makes use of the `firstAvailable` field
 when making the requests for the model. The first option is the cached model;
 the second is the model stub with a configuration option identifying the
 specific model to use.
@@ -128,10 +128,24 @@ satisfy the claim. If there is no node advertising that model as cached, then
 it will choose the second option. The config block tells the cache how to load
 the model.
 
-During NodePrepareResources, the driver will download the model and put it into
-a common cache directory, and then use a CDI mount to make the model available
-to the container and set `MODEL_PATH` and `MODEL_NAME` environment variables
-for use in the deployment.
+
+During `NodePrepareResources`, the driver does the following:
+- It initiates the model download to a shared host directory that it manages.
+- It sets a mount in the CDI file to make the model directory available to the
+  container.
+- It sets a `MODEL_PATH` environment variable to let the workload know where to
+  find the model.
+- It sets a `MODEL_NAME` environment variable to the modelId value for use in
+  the deployment.
+- It sets a `createContainer` hook to have the container runtime wait until the
+  model is fully downloaded before creating the container. This is done by
+  checking for the presence of a sentinel file.
+
+
+`NodePrepareResources` will return successfully even while the model is
+downloading. This allows the Pod creation to proceed during the download,
+making image and model downloads concurrent. The `createContainer` hook ensures
+that the container will not start until the model is fully downloaded.
 
 ```yaml
 apiVersion: apps/v1
