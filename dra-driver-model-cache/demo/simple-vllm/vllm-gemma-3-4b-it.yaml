@@ -39,15 +39,9 @@ spec:
       containers:
       - name: vllm-tpu
         image: vllm/vllm-tpu:latest
-        env:
-        - name: HF_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: hf-secret
-              key: hf_api_token
         command: ["/bin/bash", "-c"]
         args:
-        - "python3 -m vllm.entrypoints.openai.api_server --host=0.0.0.0 --port=8000 --model=google/gemma-3-4b-it --tensor-parallel-size=$(env | grep -E 'TPU_DEVICE_[0-9]+_RESOURCE_CLAIM' | wc -l)"
+        - "python3 -m vllm.entrypoints.openai.api_server --host=0.0.0.0 --port=8000 --model=${MODEL_PATH} --served-model-name=${MODEL_NAME} --tensor-parallel-size=$(env | grep -E 'TPU_DEVICE_[0-9]+_RESOURCE_CLAIM' | wc -l)"
         ports:
         - containerPort: 8000
         resources:
