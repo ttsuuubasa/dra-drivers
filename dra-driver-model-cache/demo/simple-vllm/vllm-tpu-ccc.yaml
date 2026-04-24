@@ -1,0 +1,15 @@
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: vllm-tpu-ccc
+spec:
+  nodePoolAutoCreation:
+    enabled: true
+  autoscalingPolicy:
+    consolidationDelayMinutes: 3
+  priorities:
+  - nodepools:
+    - tpu-v6e-4-pool-a
+    - tpu-v6e-4-pool-b
+    - tpu-v6e-4-pool-c
+    - tpu-v5e-8t-4n-pool-a
