@@ -13,12 +13,12 @@
 # limitations under the License.
 
 CLUSTER_NAME=dra
-LOCATION=us-central1
+LOCATION=${LOCATION:-us-west2}
 zone=${1:-a}
 gcloud container node-pools create a100-2-pool-${zone} \
     --cluster=${CLUSTER_NAME} \
     --location=${LOCATION} \
-    --node-locations=us-central1-${zone} \
+    --node-locations=${LOCATION}-${zone} \
     --machine-type="a2-highgpu-2g" \
     --accelerator="type=nvidia-tesla-a100,count=2,gpu-driver-version=disabled" \
     --enable-autoscaling \
