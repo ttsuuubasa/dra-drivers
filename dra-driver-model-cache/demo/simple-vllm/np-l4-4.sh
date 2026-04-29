@@ -16,7 +16,7 @@ CLUSTER_NAME=dra
 LOCATION=${LOCATION:-us-west2}
 zone=${1:-a}
 
-echo gcloud container node-pools create l4-4-pool-${zone} \
+gcloud container node-pools create l4-4-pool-${zone} \
     --cluster=${CLUSTER_NAME} \
     --location=${LOCATION} \
     --node-locations=${LOCATION}-${zone} \
@@ -28,6 +28,5 @@ echo gcloud container node-pools create l4-4-pool-${zone} \
     --num-nodes=1 \
     --node-labels=gke-no-default-nvidia-gpu-device-plugin=true,nvidia.com/gpu.present=true,cloud.google.com/compute-class=vllm-gpu-ccc,cloud.google.com/gke-nvidia-gpu-dra-driver=true \
     --node-taints="cloud.google.com/compute-class=vllm-gpu-ccc:NoSchedule" \
-    --disk-size=300 \
-    --no-enable-autorepair --no-enable-autoupgrade
+    --disk-size=300
 
