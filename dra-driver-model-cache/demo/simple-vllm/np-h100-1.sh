@@ -12,27 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-CLUSTER_NAME=${CLUSTER_NAME:-dra}
+CLUSTER_NAME=dra
 LOCATION=${LOCATION:-us-west2}
 zone=${1:-a}
 
-AUTOREPAIR=""
-if gcloud container clusters describe $CLUSTER_NAME --location $LOCATION | grep -q alpha ; then
-	AUTOREPAIR=" --no-enable-autorepair --no-enable-autoupgrade "
-fi
-
-gcloud container node-pools create l4-4-pool-${zone} \
+gcloud container node-pools create h100-1-pool-${zone} \
     --cluster=${CLUSTER_NAME} \
     --location=${LOCATION} \
     --node-locations=${LOCATION}-${zone} \
-    --machine-type="g2-standard-48" \
-    --accelerator="type=nvidia-l4,count=4,gpu-driver-version=disabled" \
+    --machine-type="a3-highgpu-1g" \
+    --accelerator="type=nvidia-h100-80gb,count=1,gpu-driver-version=disabled" \
     --enable-autoscaling \
     --total-min-nodes=1 \
     --total-max-nodes=3 \
     --num-nodes=1 \
     --node-labels=gke-no-default-nvidia-gpu-device-plugin=true,nvidia.com/gpu.present=true,cloud.google.com/compute-class=vllm-gpu-ccc,cloud.google.com/gke-nvidia-gpu-dra-driver=true \
     --node-taints="cloud.google.com/compute-class=vllm-gpu-ccc:NoSchedule" \
-    $AUTOREPAIR \
+    --spot \
     --disk-size=300
-
