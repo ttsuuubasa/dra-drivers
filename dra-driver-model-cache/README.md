@@ -211,4 +211,9 @@ spec:
   is, the cached version of the model does not appear in the ResourceSlice
   until it is fully downloaded. Multiple ResourceClaims that ask for the same
   model are not guaranteed to be satisfied by the currently-being-downloaded
-  model. This is a functionally benign race condition.
+  model. This is a functionally benign race condition. It could be changed.
+
+* The prioritized list functionality affects node selection only through
+  *scoring*. This means that other scoring factors could take precedence;
+  it is not guaranteed that a node with a cached model will be selected,
+  only *more likely*.
