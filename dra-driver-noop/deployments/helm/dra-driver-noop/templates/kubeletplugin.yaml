@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "dra-driver-noop.fullname" . }}
+  labels:
+    {{- include "dra-driver-noop.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "dra-driver-noop.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dra-driver-noop.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "dra-driver-noop.serviceAccountName" . }}
+      containers:
+      - name: plugin
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command: ["/usr/bin/dra-driver-noop"]
+        args:
+        - "-driver-names={{ .Values.driverNames }}"
+        - "-node-name=$(NODE_NAME)"
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        securityContext:
+          {{- toYaml .Values.kubeletPlugin.containers.plugin.securityContext | nindent 10 }}
+        volumeMounts:
+        - name: plugins-registry
+          mountPath: {{ .Values.kubeletPlugin.kubeletRegistrarDirectoryPath | quote }}
+        - name: plugins
+          mountPath: {{ .Values.kubeletPlugin.kubeletPluginsDirectoryPath | quote }}
+      volumes:
+      - name: plugins-registry
+        hostPath:
+          path: {{ .Values.kubeletPlugin.kubeletRegistrarDirectoryPath | quote }}
+      - name: plugins
+        hostPath:
+          path: {{ .Values.kubeletPlugin.kubeletPluginsDirectoryPath | quote }}

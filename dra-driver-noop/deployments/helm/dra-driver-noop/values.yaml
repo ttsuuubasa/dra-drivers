@@ -1,0 +1,20 @@
+image:
+  repository: dra-driver-noop
+  tag: latest
+  pullPolicy: IfNotPresent
+
+driverNames: "noop.x-k8s.io"
+
+kubeletPlugin:
+  kubeletRegistrarDirectoryPath: /var/lib/kubelet/plugins_registry
+  kubeletPluginsDirectoryPath: /var/lib/kubelet/plugins
+  podSecurityContext: {}
+  containers:
+    plugin:
+      securityContext:
+        privileged: true
+      resources: {}
+
+serviceAccount:
+  create: true
+  name: ""

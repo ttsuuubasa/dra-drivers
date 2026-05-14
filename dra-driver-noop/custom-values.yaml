@@ -1,0 +1,15 @@
+image:
+  repository: us-central1-docker.pkg.dev/jbelamaric-dev/jbelamaric-dev/dra-driver-noop
+  tag: latest
+  pullPolicy: Always
+
+driverNames: "nvl.example.com"
+
+kubeletPlugin:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: example.com/nvldomain
+            operator: Exists
