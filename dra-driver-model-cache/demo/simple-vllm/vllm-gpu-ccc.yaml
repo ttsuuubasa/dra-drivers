@@ -8,14 +8,13 @@ spec:
   autoscalingPolicy:
     consolidationDelayMinutes: 3
   priorities:
-  - nodepools:
-    - a100-2-pool-a
-    - a100-2-pool-b
-    - a100-2-pool-c
-    - a100-2-pool-f
-    - l4-2-pool-a
-    - l4-2-pool-b
-    - l4-2-pool-c
-    - t4-4-pool-a
-    - t4-4-pool-b
-    - t4-4-pool-c
+  - nodepools: [a100-2-pool-a]
+  - nodepools: [a100-2-pool-b]
+  - nodepools: [a100-2-pool-c]
+  - nodepools: [a100-2-pool-f]
+  - nodepools: [l4-2-pool-a]
+  - nodepools: [l4-2-pool-b]
+  - nodepools: [l4-2-pool-c]
+  - nodepools: [t4-4-pool-a]
+  - nodepools: [t4-4-pool-b]
+  - nodepools: [t4-4-pool-c]
