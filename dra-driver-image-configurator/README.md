@@ -1,20 +1,43 @@
 # dra-driver-image-configurator
 
-Proof-of-concept controller demonstrating how DRA Device Binding Conditions (KEP-5007) can enable workload fungibility — allowing the runtime container image to be selected automatically based on which device the scheduler actually allocates.
+Proof-of-concept controller demonstrating how DRA Device Binding Conditions
+(KEP-5007) can enable workload fungibility — allowing the runtime container
+image to be selected automatically based on which device the scheduler actually
+allocates.
 
 ## Motivation
 
-Consider an inference service that scales horizontally. Each Pod prefers a GPU for performance, but when GPU supply is exhausted — whether due to cluster capacity limits or cloud provider quota — the service should continue scaling by falling back to CPU-based inference rather than failing. DRA's `firstAvailable` prioritized list handles the scheduling side of this: declare GPU as the first choice and CPU as the fallback, and the scheduler does the right thing automatically.
+Consider an inference service that scales horizontally. Each Pod prefers a GPU
+for performance, but when GPU supply is exhausted — whether due to cluster
+capacity limits or cloud provider quota — the service should continue scaling
+by falling back to CPU-based inference rather than failing. DRA's
+`firstAvailable` prioritized list handles the scheduling side of this: declare
+GPU as the first choice and CPU as the fallback, and the scheduler does the
+right thing automatically.
 
-The missing piece is the container image. A GPU inference workload and a CPU inference workload require different images, but the scheduler's choice is only known at scheduling time — too late to set the image upfront. Something needs to observe the allocation result and mutate the Pod's image before the kubelet starts the container.
+The missing piece is the container image. A GPU inference workload and a CPU
+inference workload require different images, but the scheduler's choice is only
+known at scheduling time — too late to set the image upfront. Something needs
+to observe the allocation result and mutate the Pod's image before the kubelet
+starts the container.
 
-This controller solves that problem. It reads which subrequest was satisfied, mutates the container image accordingly, and lets the Pod proceed — with no operator intervention and no failed Pods.
+This controller solves that problem. It reads which subrequest was satisfied,
+mutates the container image accordingly, and lets the Pod proceed — with no
+operator intervention and no failed Pods.
 
-See also: [KEP-5007 discussion](https://github.com/kubernetes/enhancements/pull/5487#discussion_r2382915417)
+See also: [KEP-5007
+discussion](https://github.com/kubernetes/enhancements/pull/5487#discussion_r2382915417)
 
 ## How it works
 
-The controller publishes a dedicated ResourceSlice for the `image-configurator.x-k8s.io` driver. This slice's device declares `bindingConditions: ["image-verified"]`, which causes the kubelet to block Pod startup until the condition is satisfied. Pods request this device alongside their actual compute device. When a Pod is pending, the controller reads the allocation result, determines which subrequest was chosen, mutates the container image, and then satisfies the binding condition to unblock the kubelet.
+The controller publishes a dedicated ResourceSlice for the
+`image-configurator.x-k8s.io` driver. This slice's device declares
+`bindingConditions: ["image-verified"]`, which causes the kubelet to block Pod
+startup until the condition is satisfied. Pods request this device alongside
+their actual compute device. When a Pod is pending, the controller reads the
+allocation result, determines which subrequest was chosen, mutates the
+container image, and then satisfies the binding condition to unblock the
+kubelet.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -88,21 +111,34 @@ graph TB
 | **[dra-driver-noop](https://github.com/gke-labs/dra-drivers/tree/main/dra-driver-noop)** | Kubelet plugin for `image-configurator.x-k8s.io`. Registers with the kubelet and returns success for all Prepare/Unprepare calls without doing anything. Required because the kubelet must have a registered plugin for each driver name that appears in an allocation result. |
 | **dra-driver-image-configurator** (this controller) | Publishes a ResourceSlice for `image-configurator.x-k8s.io` with `bindingConditions: ["image-verified"]`. Watches Pods, mutates container images, and satisfies the binding condition. |
 
-The `image-configurator.x-k8s.io` ResourceSlice exposes a single shared device (`image-configurator`) with `allowMultipleAllocations: true` and `bindsToNode: false`, so it can be claimed by any number of Pods across all nodes simultaneously.
+The `image-configurator.x-k8s.io` ResourceSlice exposes a single shared device
+(`image-configurator`) with `allowMultipleAllocations: true` and `bindsToNode:
+false`, so it can be claimed by any number of Pods across all nodes
+simultaneously.
 
-> **Note:** The dra-driver-noop plugin may become unnecessary if [KEP-5945 (Optional Node Preparation)](https://github.com/kubernetes/enhancements/issues/5945) is implemented, which would allow DRA drivers to opt out of kubelet-side Prepare/Unprepare entirely.
+> **Note:** The dra-driver-noop plugin may become unnecessary if [KEP-5945
+> (Optional Node
+> Preparation)](https://github.com/kubernetes/enhancements/issues/5945) is
+> implemented, which would allow DRA drivers to opt out of kubelet-side
+> Prepare/Unprepare entirely.
 
 ## Prerequisites
 
-- Kubernetes v1.34+ with feature gates `DynamicResourceAllocation` and `DRADeviceBindingConditions` enabled
-- [dra-example-driver](https://github.com/kubernetes-sigs/dra-example-driver) deployed for `gpu.example.com` and `cpu.example.com`
-- [dra-driver-noop](https://github.com/gke-labs/dra-drivers/tree/main/dra-driver-noop) deployed for `image-configurator.x-k8s.io`
+- Kubernetes v1.34+ with feature gates `DynamicResourceAllocation` and
+  `DRADeviceBindingConditions` enabled
+- [dra-example-driver](https://github.com/kubernetes-sigs/dra-example-driver)
+  deployed for `gpu.example.com` and `cpu.example.com`
+- [dra-driver-noop](https://github.com/gke-labs/dra-drivers/tree/main/dra-driver-noop)
+  deployed for `image-configurator.x-k8s.io`
 
 ## Setup
 
 ### 1. Deploy dra-example-driver
 
-Follow the [dra-example-driver README](https://github.com/kubernetes-sigs/dra-example-driver) to deploy the driver twice — once for `gpu.example.com` and once for `cpu.example.com`. Each instance runs as a DaemonSet and creates a ResourceSlice per node.
+Follow the [dra-example-driver
+README](https://github.com/kubernetes-sigs/dra-example-driver) to deploy the
+driver twice — once for `gpu.example.com` and once for `cpu.example.com`. Each
+instance runs as a DaemonSet and creates a ResourceSlice per node.
 
 Verify the ResourceSlices are present:
 
@@ -201,13 +237,22 @@ spec:
 
 ### 2. Deploy dra-driver-noop
 
-Deploy [dra-driver-noop](https://github.com/gke-labs/dra-drivers/tree/main/dra-driver-noop) as a kubelet plugin for `image-configurator.x-k8s.io`. This no-op driver registers with the kubelet and returns success for all Prepare/Unprepare gRPC calls without doing any actual work. It is required because the kubelet must have a registered plugin for every driver name that appears in an allocation result.
+Deploy
+[dra-driver-noop](https://github.com/gke-labs/dra-drivers/tree/main/dra-driver-noop)
+as a kubelet plugin for `image-configurator.x-k8s.io`. This no-op driver
+registers with the kubelet and returns success for all Prepare/Unprepare gRPC
+calls without doing any actual work. It is required because the kubelet must
+have a registered plugin for every driver name that appears in an allocation
+result.
 
-Follow the [dra-driver-noop README](https://github.com/gke-labs/dra-drivers/tree/main/dra-driver-noop) to deploy it with `driverNames: "image-configurator.x-k8s.io"`.
+Follow the [dra-driver-noop
+README](https://github.com/gke-labs/dra-drivers/tree/main/dra-driver-noop) to
+deploy it with `driverNames: "image-configurator.x-k8s.io"`.
 
 ### 3. Deploy the controller
 
-The controller publishes the `image-configurator.x-k8s.io` ResourceSlice and watches Pods for pending binding conditions.
+The controller publishes the `image-configurator.x-k8s.io` ResourceSlice and
+watches Pods for pending binding conditions.
 
 ```bash
 kubectl apply -f deploy/daemonset.yaml
@@ -258,7 +303,8 @@ spec:
 kubectl apply -f deploy/deviceclass.yaml
 ```
 
-This creates a `DeviceClass` named `image-configurator.x-k8s.io` that selects devices from the `image-configurator.x-k8s.io` driver.
+This creates a `DeviceClass` named `image-configurator.x-k8s.io` that selects
+devices from the `image-configurator.x-k8s.io` driver.
 
 ## Usage
 
@@ -266,11 +312,19 @@ This creates a `DeviceClass` named `image-configurator.x-k8s.io` that selects de
 
 ### 1. Create a ResourceClaimTemplate with a prioritized list
 
-Use `firstAvailable` to specify a prioritized list of subrequests. The scheduler will try them in order and pick the first one that can be satisfied. Each subrequest references a different DeviceClass.
+Use `firstAvailable` to specify a prioritized list of subrequests. The
+scheduler will try them in order and pick the first one that can be satisfied.
+Each subrequest references a different DeviceClass.
 
-The template also declares an `image-config` request targeting `image-configurator.x-k8s.io`. This is the gating device that carries `BindingConditions`, blocking Pod startup until the controller has mutated the image.
+The template also declares an `image-config` request targeting
+`image-configurator.x-k8s.io`. This is the gating device that carries
+`BindingConditions`, blocking Pod startup until the controller has mutated the
+image.
 
-The `config` section uses the `<main request>/<subrequest>` format to attach opaque parameters to each subrequest. The controller reads these parameters — typed as `ImageConfig` — to determine which image to set when the corresponding subrequest is chosen.
+The `config` section uses the `<main request>/<subrequest>` format to attach
+opaque parameters to each subrequest. The controller reads these parameters —
+typed as `ImageConfig` — to determine which image to set when the corresponding
+subrequest is chosen.
 
 ```yaml
 apiVersion: resource.k8s.io/v1
@@ -335,8 +389,14 @@ spec:
 
 This scenario demonstrates the prioritized allocation and image mutation:
 
-- The first Pod (`my-app-1`) is allocated a GPU device because `gpu.example.com` has the highest priority in `firstAvailable`. The controller reads the matching config and mutates the container image from `registry.k8s.io/pause:3.10` to `fedora:latest`.
-- The second Pod (`my-app-2`) cannot get a GPU because it is already occupied by `my-app-1`. The scheduler falls back to `cpu.example.com` via the prioritized list, and the controller mutates the container image from `registry.k8s.io/pause:3.10` to `ubuntu:latest`.
+- The first Pod (`my-app-1`) is allocated a GPU device because
+  `gpu.example.com` has the highest priority in `firstAvailable`. The
+controller reads the matching config and mutates the container image from
+`registry.k8s.io/pause:3.10` to `fedora:latest`.
+- The second Pod (`my-app-2`) cannot get a GPU because it is already occupied
+  by `my-app-1`. The scheduler falls back to `cpu.example.com` via the
+prioritized list, and the controller mutates the container image from
+`registry.k8s.io/pause:3.10` to `ubuntu:latest`.
 
 **Step 1: Create the first Pod**
 
@@ -459,7 +519,8 @@ pod/my-app-2 created
 
 **Step 6: Verify the second Pod falls back to the CPU**
 
-With the single GPU device already consumed by `my-app-1`, the scheduler falls back to `cpu.example.com`:
+With the single GPU device already consumed by `my-app-1`, the scheduler falls
+back to `cpu.example.com`:
 
 ```bash
 $ kubectl get resourceclaim my-app-2-device-4knq7 -o jsonpath='{.status}' | jq .
@@ -564,7 +625,8 @@ my-app-2   1/1     Running   0          25s
 
 ## ImageConfig schema
 
-The opaque parameters in the `config` section must conform to the `ImageConfig` type defined by this controller:
+The opaque parameters in the `config` section must conform to the `ImageConfig`
+type defined by this controller:
 
 ```json
 {
