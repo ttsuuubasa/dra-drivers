@@ -7,7 +7,7 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 //
 // Example JSON:
 //
-//	{ "apiVersion": "image.example.com/v1alpha1",
+//	{ "apiVersion": "image-configurator.x-k8s.io/v1alpha1",
 //	  "kind": "ImageConfig",
 //	  "containerName": "app",
 //	  "image": "nginx:1.27" }

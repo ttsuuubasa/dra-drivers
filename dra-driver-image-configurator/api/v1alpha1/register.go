@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	SchemeGroupVersion = schema.GroupVersion{Group: "image.example.com", Version: "v1alpha1"}
+	SchemeGroupVersion = schema.GroupVersion{Group: "image-configurator.x-k8s.io", Version: "v1alpha1"}
 	SchemeBuilder      = runtime.NewSchemeBuilder(addKnownTypes)
 	AddToScheme        = SchemeBuilder.AddToScheme
 
