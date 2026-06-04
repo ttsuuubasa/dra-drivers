@@ -391,12 +391,12 @@ This scenario demonstrates the prioritized allocation and image mutation:
 
 - The first Pod (`my-app-1`) is allocated a GPU device because
   `gpu.example.com` has the highest priority in `firstAvailable`. The
-controller reads the matching config and mutates the container image from
-`registry.k8s.io/pause:3.10` to `fedora:latest`.
+  controller reads the matching config and mutates the container image from
+  `registry.k8s.io/pause:3.10` to `fedora:latest`.
 - The second Pod (`my-app-2`) cannot get a GPU because it is already occupied
   by `my-app-1`. The scheduler falls back to `cpu.example.com` via the
-prioritized list, and the controller mutates the container image from
-`registry.k8s.io/pause:3.10` to `ubuntu:latest`.
+  prioritized list, and the controller mutates the container image from
+  `registry.k8s.io/pause:3.10` to `ubuntu:latest`.
 
 **Step 1: Create the first Pod**
 
