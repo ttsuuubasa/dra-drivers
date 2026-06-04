@@ -8,4 +8,4 @@ spec:
       requests:
         - name: image-config
           exactly:
-            deviceClassName: image.example.com
+            deviceClassName: image-configurator.x-k8s.io

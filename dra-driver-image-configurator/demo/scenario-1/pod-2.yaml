@@ -6,7 +6,7 @@ spec:
   terminationGracePeriodSeconds: 0
   containers:
     - name: app
-      image: busybox:latest  # will be overwritten by the controller
+      image: registry.k8s.io/pause:3.10  # will be overwritten by the controller
       imagePullPolicy: IfNotPresent
       command: ["sleep", "infinity"]
       resources:

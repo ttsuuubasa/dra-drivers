@@ -20,7 +20,7 @@ rules:
     verbs: ["get", "update", "patch"]
   - apiGroups: ["resource.k8s.io"]
     resources: ["resourceclaims/driver"]
-    resourceNames: ["gpu.example.com", "cpu.example.com", "image.example.com"]
+    resourceNames: ["gpu.example.com", "cpu.example.com", "image-configurator.x-k8s.io"]
     verbs: ["associated-node:update", "arbitrary-node:update"]
   - apiGroups: ["resource.k8s.io"]
     resources: ["resourceslices"]

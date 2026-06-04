@@ -18,7 +18,7 @@ import (
 	resourceslice "k8s.io/dynamic-resource-allocation/resourceslice"
 )
 
-const DriverName = "image.example.com"
+const DriverName = "image-configurator.x-k8s.io"
 
 func main() {
 	ctrl.SetLogger(zap.New())

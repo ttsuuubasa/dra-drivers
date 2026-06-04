@@ -1,8 +1,8 @@
 apiVersion: resource.k8s.io/v1
 kind: DeviceClass
 metadata:
-  name: image.example.com
+  name: image-configurator.x-k8s.io
 spec:
   selectors:
   - cel:
-      expression: device.driver == 'image.example.com'
+      expression: device.driver == 'image-configurator.x-k8s.io'
