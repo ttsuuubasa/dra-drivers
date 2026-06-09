@@ -32,7 +32,7 @@ discussion](https://github.com/kubernetes/enhancements/pull/5487#discussion_r238
 
 The controller publishes a dedicated ResourceSlice for the
 `image-configurator.x-k8s.io` driver. This slice's device declares
-`bindingConditions: ["image-verified"]`, which causes the kubelet to block Pod
+`bindingConditions: ["image-configurator.x-k8s.io/image-updated"]`, which causes the kubelet to block Pod
 startup until the condition is satisfied. Pods request this device alongside
 their actual compute device. When a Pod is pending, the controller reads the
 allocation result, determines which subrequest was chosen, mutates the
@@ -58,7 +58,8 @@ kubelet.
                    Scheduler allocates devices
                                  │
 ┌──────────────────────────────────────────────────────────────────┐
-│ image-config device has BindingCondition "image-verified"        │
+│ image-config device has BindingCondition                         │
+│ "image-configurator.x-k8s.io/image-updated"                      │
 │  → kubelet blocks Pod startup                                    │
 └──────────────────────────────────────────────────────────────────┘
                                  │
@@ -109,7 +110,7 @@ graph TB
 |---|---|
 | **dra-example-driver** | Kubelet plugin for `gpu.example.com` and `cpu.example.com`. Publishes ResourceSlices with device attributes. No `BindingConditions` on these devices. |
 | **[dra-driver-noop](https://github.com/gke-labs/dra-drivers/tree/main/dra-driver-noop)** | Kubelet plugin for `image-configurator.x-k8s.io`. Registers with the kubelet and returns success for all Prepare/Unprepare calls without doing anything. Required because the kubelet must have a registered plugin for each driver name that appears in an allocation result. |
-| **dra-driver-image-configurator** (this controller) | Publishes a ResourceSlice for `image-configurator.x-k8s.io` with `bindingConditions: ["image-verified"]`. Watches Pods, mutates container images, and satisfies the binding condition. |
+| **dra-driver-image-configurator** (this controller) | Publishes a ResourceSlice for `image-configurator.x-k8s.io` with `bindingConditions: ["image-configurator.x-k8s.io/image-updated"]`. Watches Pods, mutates container images, and satisfies the binding condition. |
 
 The `image-configurator.x-k8s.io` ResourceSlice exposes a single shared device
 (`image-configurator`) with `allowMultipleAllocations: true` and `bindsToNode:
@@ -283,9 +284,9 @@ spec:
   devices:
   - allowMultipleAllocations: true
     bindingConditions:
-    - image-verified
+    - image-configurator.x-k8s.io/image-updated
     bindingFailureConditions:
-    - image-prepare-failed
+    - image-configurator.x-k8s.io/image-update-failed
     bindsToNode: false
     name: image-configurator
   driver: image-configurator.x-k8s.io
@@ -444,8 +445,8 @@ $ kubectl get resourceclaim my-app-1-device-r8m2x -o jsonpath='{.status}' | jq .
           "request": "device/gpu"
         },
         {
-          "bindingConditions": ["image-verified"],
-          "bindingFailureConditions": ["image-prepare-failed"],
+          "bindingConditions": ["image-configurator.x-k8s.io/image-updated"],
+          "bindingFailureConditions": ["image-configurator.x-k8s.io/image-update-failed"],
           "device": "image-configurator",
           "driver": "image-configurator.x-k8s.io",
           "pool": "all-nodes",
@@ -475,7 +476,7 @@ $ kubectl get resourceclaim my-app-1-device-r8m2x -o jsonpath='{.status}' | jq .
           "message": "Container image has been updated",
           "reason": "ImagePatched",
           "status": "True",
-          "type": "image-verified"
+          "type": "image-configurator.x-k8s.io/image-updated"
         }
       ],
       "device": "image-configurator",
@@ -557,8 +558,8 @@ $ kubectl get resourceclaim my-app-2-device-4knq7 -o jsonpath='{.status}' | jq .
           "request": "device/cpu"
         },
         {
-          "bindingConditions": ["image-verified"],
-          "bindingFailureConditions": ["image-prepare-failed"],
+          "bindingConditions": ["image-configurator.x-k8s.io/image-updated"],
+          "bindingFailureConditions": ["image-configurator.x-k8s.io/image-update-failed"],
           "device": "image-configurator",
           "driver": "image-configurator.x-k8s.io",
           "pool": "all-nodes",
@@ -588,7 +589,7 @@ $ kubectl get resourceclaim my-app-2-device-4knq7 -o jsonpath='{.status}' | jq .
           "message": "Container image has been updated",
           "reason": "ImagePatched",
           "status": "True",
-          "type": "image-verified"
+          "type": "image-configurator.x-k8s.io/image-updated"
         }
       ],
       "device": "image-configurator",

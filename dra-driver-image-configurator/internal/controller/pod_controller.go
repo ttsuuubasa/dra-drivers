@@ -16,8 +16,8 @@ import (
 	imagev1alpha1 "github.com/ttsuuubasa/dra-driver-image-configurator/api/v1alpha1"
 )
 
-const BindingConditionValidateImage = "image-verified"
-const BindingFailuerConditionPrepareImage = "image-prepare-failed"
+const BindingConditionValidateImage = "image-configurator.x-k8s.io/image-updated"
+const BindingFailuerConditionPrepareImage = "image-configurator.x-k8s.io/image-update-failed"
 
 // PodReconciler watches Pods nominated to this node and patches their
 // container images based on the associated ResourceClaim config.
@@ -97,7 +97,7 @@ func (r *PodReconciler) fetchClaims(ctx context.Context, pod *corev1.Pod) ([]*re
 }
 
 // collectPendingBindingResults returns per-claim pending binding results where the
-// "image-verified" binding condition is required but not yet satisfied.
+// "image-configurator.x-k8s.io/image-updated" binding condition is required but not yet satisfied.
 func collectPendingBindingResults(claims []*resourceapi.ResourceClaim) []claimBindingResult {
 	var pending []claimBindingResult
 	for _, claim := range claims {
@@ -173,7 +173,7 @@ func (r *PodReconciler) patchImages(ctx context.Context, pod *corev1.Pod, imageC
 	return nil
 }
 
-// setBindingCondition sets the "image-verified" binding condition to True
+// setBindingCondition sets the "image-configurator.x-k8s.io/image-updated" binding condition to True
 // on the claim's Status.Devices for all pending binding results in a single update.
 func (r *PodReconciler) setBindingCondition(ctx context.Context, cbr claimBindingResult) error {
 	now := metav1.Now()
