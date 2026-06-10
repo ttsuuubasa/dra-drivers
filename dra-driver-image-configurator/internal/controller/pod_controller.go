@@ -16,8 +16,8 @@ import (
 	imagev1alpha1 "github.com/ttsuuubasa/dra-driver-image-configurator/api/v1alpha1"
 )
 
-const BindingConditionValidateImage = "image-configurator.x-k8s.io/image-updated"
-const BindingFailuerConditionPrepareImage = "image-configurator.x-k8s.io/image-update-failed"
+const BindingConditionUpdateImage = "image-configurator.x-k8s.io/image-updated"
+const BindingFailureConditionUpdateImage = "image-configurator.x-k8s.io/image-update-failed"
 
 // PodReconciler watches Pods nominated to this node and patches their
 // container images based on the associated ResourceClaim config.
@@ -103,10 +103,10 @@ func collectPendingBindingResults(claims []*resourceapi.ResourceClaim) []claimBi
 	for _, claim := range claims {
 		var results []resourceapi.DeviceRequestAllocationResult
 		for _, result := range claim.Status.Allocation.Devices.Results {
-			if !slices.Contains(result.BindingConditions, BindingConditionValidateImage) {
+			if !slices.Contains(result.BindingConditions, BindingConditionUpdateImage) {
 				continue
 			}
-			if isBindingConditionAlreadySet(claim, &result, BindingConditionValidateImage) {
+			if isBindingConditionAlreadySet(claim, &result, BindingConditionUpdateImage) {
 				continue
 			}
 			results = append(results, result)
@@ -184,7 +184,7 @@ func (r *PodReconciler) setBindingCondition(ctx context.Context, cbr claimBindin
 			Device:  result.Device,
 			ShareID: (*string)(result.ShareID),
 			Conditions: []metav1.Condition{{
-				Type:               BindingConditionValidateImage,
+				Type:               BindingConditionUpdateImage,
 				Status:             metav1.ConditionTrue,
 				LastTransitionTime: now,
 				Reason:             "ImagePatched",
