@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	imagev1alpha1 "github.com/ttsuuubasa/dra-driver-image-configurator/api/v1alpha1"
+	imagev1alpha1 "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/api/v1alpha1"
 )
 
 const BindingConditionUpdateImage = "image-configurator.x-k8s.io/image-updated"
