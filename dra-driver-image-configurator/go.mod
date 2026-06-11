@@ -1,4 +1,4 @@
-module github.com/ttsuuubasa/dra-driver-image-configurator
+module github.com/gke-labs/dra-drivers/dra-driver-image-configurator
 
 go 1.26.0
 
