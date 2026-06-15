@@ -430,140 +430,102 @@ func TestFetchClaims(t *testing.T) {
 
 func TestReconcile(t *testing.T) {
 	s := createTestScheme()
-
-	ic := &imagev1alpha1.ImageConfig{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "image-configurator.x-k8s.io/v1alpha1",
-			Kind:       "ImageConfig",
-		},
-		ContainerName: "target-container",
-		Image:         "new-image:v2",
-	}
-	rawBytes, _ := json.Marshal(ic)
-
 	claimName := "reconcile-claim"
-	claim := &resourceapi.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      claimName,
-			Namespace: "test-ns",
+
+	tests := []struct {
+		name             string
+		pod              *corev1.Pod
+		claim            *resourceapi.ResourceClaim
+		wantImages       []string
+		wantConditionTyp string
+	}{
+		{
+			name: "patches container image and sets binding condition",
+			pod: newPod(NameRef{Name: "reconcile-pod", Namespace: "test-ns"},
+				withContainer(ImageRef{ContainerName: "target-container", Image: "old-image:v1"}),
+				withContainer(ImageRef{ContainerName: "other-container", Image: "other-image:v1"}),
+				withClaimRef(claimName),
+			),
+			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
+				withImageConfig(t, ImageRef{
+					ContainerName: "target-container",
+					Image:         "new-image:v2",
+				}),
+				withResult(DeviceRef{
+					Driver: "test-driver", Pool: "test-pool", Device: "test-device",
+					BindingConditions: []string{BindingConditionUpdateImage},
+				}),
+			),
+			wantImages:       []string{"new-image:v2", "other-image:v1"},
+			wantConditionTyp: BindingConditionUpdateImage,
 		},
-		Status: resourceapi.ResourceClaimStatus{
-			Allocation: &resourceapi.AllocationResult{
-				Devices: resourceapi.DeviceAllocationResult{
-					Config: []resourceapi.DeviceAllocationConfiguration{
-						{
-							DeviceConfiguration: resourceapi.DeviceConfiguration{
-								Opaque: &resourceapi.OpaqueDeviceConfiguration{
-									Parameters: runtime.RawExtension{Raw: rawBytes},
-								},
-							},
-						},
-					},
-					Results: []resourceapi.DeviceRequestAllocationResult{
-						{
-							Driver: "test-driver",
-							Pool:   "test-pool",
-							Device: "test-device",
-							BindingConditions: []string{
-								BindingConditionUpdateImage,
-							},
-						},
-					},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(s).
+				WithObjects(tc.pod, tc.claim).
+				WithStatusSubresource(&resourceapi.ResourceClaim{}).
+				Build()
+			reconciler := &PodReconciler{Client: fakeClient}
+
+			req := reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: tc.pod.Namespace,
+					Name:      tc.pod.Name,
 				},
-			},
-		},
-	}
+			}
 
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "reconcile-pod",
-			Namespace: "test-ns",
-		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{
-					Name:  "target-container",
-					Image: "old-image:v1",
-				},
-				{
-					Name:  "other-container",
-					Image: "other-image:v1",
-				},
-			},
-		},
-		Status: corev1.PodStatus{
-			ResourceClaimStatuses: []corev1.PodResourceClaimStatus{
-				{
-					Name:              "ref",
-					ResourceClaimName: &claimName,
-				},
-			},
-		},
-	}
+			// Run Reconcile
+			res, err := reconciler.Reconcile(context.Background(), req)
+			if err != nil {
+				t.Fatalf("Reconcile failed: %v", err)
+			}
+			if res.Requeue {
+				t.Errorf("unexpected Requeue")
+			}
 
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(s).
-		WithObjects(pod, claim).
-		WithStatusSubresource(&resourceapi.ResourceClaim{}).
-		Build()
+			// Verify pod images were updated as expected.
+			updatedPod := &corev1.Pod{}
+			if err := fakeClient.Get(context.Background(), req.NamespacedName, updatedPod); err != nil {
+				t.Fatalf("failed to get updated pod: %v", err)
+			}
 
-	reconciler := &PodReconciler{Client: fakeClient}
+			for i, want := range tc.wantImages {
+				if got := updatedPod.Spec.Containers[i].Image; got != want {
+					t.Errorf("container %d image = %q, want %q", i, got, want)
+				}
+			}
 
-	req := reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Namespace: "test-ns",
-			Name:      "reconcile-pod",
-		},
-	}
+			// Verify ResourceClaim status was updated with the binding condition.
+			updatedClaim := &resourceapi.ResourceClaim{}
+			if err := fakeClient.Get(context.Background(), types.NamespacedName{Namespace: tc.claim.Namespace, Name: tc.claim.Name}, updatedClaim); err != nil {
+				t.Fatalf("failed to get updated claim: %v", err)
+			}
 
-	// Run Reconcile
-	res, err := reconciler.Reconcile(context.Background(), req)
-	if err != nil {
-		t.Fatalf("Reconcile failed: %v", err)
-	}
-	if res.Requeue {
-		t.Errorf("unexpected Requeue")
-	}
+			if len(updatedClaim.Status.Devices) != 1 {
+				t.Fatalf("expected 1 allocated device status in claim, got %d", len(updatedClaim.Status.Devices))
+			}
+			if len(updatedClaim.Status.Devices[0].Conditions) != 1 {
+				t.Fatalf("expected 1 condition in allocated device status, got %d", len(updatedClaim.Status.Devices[0].Conditions))
+			}
+			if updatedClaim.Status.Devices[0].Conditions[0].Type != tc.wantConditionTyp {
+				t.Errorf("expected condition type %q, got %q", tc.wantConditionTyp, updatedClaim.Status.Devices[0].Conditions[0].Type)
+			}
+			if updatedClaim.Status.Devices[0].Conditions[0].Status != metav1.ConditionTrue {
+				t.Errorf("expected condition status True, got %v", updatedClaim.Status.Devices[0].Conditions[0].Status)
+			}
 
-	// Verify pod image was updated
-	updatedPod := &corev1.Pod{}
-	if err := fakeClient.Get(context.Background(), req.NamespacedName, updatedPod); err != nil {
-		t.Fatalf("failed to get updated pod: %v", err)
-	}
-
-	if updatedPod.Spec.Containers[0].Image != "new-image:v2" {
-		t.Errorf("expected container 0 image to be 'new-image:v2', got %q", updatedPod.Spec.Containers[0].Image)
-	}
-	if updatedPod.Spec.Containers[1].Image != "other-image:v1" {
-		t.Errorf("expected container 1 image to remain 'other-image:v1', got %q", updatedPod.Spec.Containers[1].Image)
-	}
-
-	// Verify ResourceClaim status was updated with the binding condition
-	updatedClaim := &resourceapi.ResourceClaim{}
-	if err := fakeClient.Get(context.Background(), types.NamespacedName{Namespace: "test-ns", Name: claimName}, updatedClaim); err != nil {
-		t.Fatalf("failed to get updated claim: %v", err)
-	}
-
-	if len(updatedClaim.Status.Devices) != 1 {
-		t.Fatalf("expected 1 allocated device status in claim, got %d", len(updatedClaim.Status.Devices))
-	}
-	if len(updatedClaim.Status.Devices[0].Conditions) != 1 {
-		t.Fatalf("expected 1 condition in allocated device status, got %d", len(updatedClaim.Status.Devices[0].Conditions))
-	}
-	if updatedClaim.Status.Devices[0].Conditions[0].Type != BindingConditionUpdateImage {
-		t.Errorf("expected condition type %q, got %q", BindingConditionUpdateImage, updatedClaim.Status.Devices[0].Conditions[0].Type)
-	}
-	if updatedClaim.Status.Devices[0].Conditions[0].Status != metav1.ConditionTrue {
-		t.Errorf("expected condition status True, got %v", updatedClaim.Status.Devices[0].Conditions[0].Status)
-	}
-
-	// Re-running Reconcile should now do nothing since binding condition is already set
-	res, err = reconciler.Reconcile(context.Background(), req)
-	if err != nil {
-		t.Fatalf("second Reconcile failed: %v", err)
-	}
-	if res.Requeue {
-		t.Errorf("unexpected Requeue on second Reconcile")
+			// Re-running Reconcile should now do nothing since binding condition is already set.
+			res, err = reconciler.Reconcile(context.Background(), req)
+			if err != nil {
+				t.Fatalf("second Reconcile failed: %v", err)
+			}
+			if res.Requeue {
+				t.Errorf("unexpected Requeue on second Reconcile")
+			}
+		})
 	}
 }
 
