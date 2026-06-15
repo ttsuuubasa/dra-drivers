@@ -312,69 +312,58 @@ func TestCollectPendingBindingResults(t *testing.T) {
 // ── collectImageConfigs ───────────────────────────────────────────────────────
 
 func TestCollectImageConfigs(t *testing.T) {
-	ic := &imagev1alpha1.ImageConfig{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "image-configurator.x-k8s.io/v1alpha1",
-			Kind:       "ImageConfig",
-		},
-		ContainerName: "test-container",
-		Image:         "custom-image:v1",
-	}
-	rawBytes, err := json.Marshal(ic)
-	if err != nil {
-		t.Fatalf("failed to marshal ImageConfig: %v", err)
-	}
-
-	invalidJSON := []byte(`{"apiVersion": "image-configurator.x-k8s.io/v1alpha1", "kind": "ImageConfig", "containerName": ""}`)
-
-	claim := &resourceapi.ResourceClaim{
-		Status: resourceapi.ResourceClaimStatus{
-			Allocation: &resourceapi.AllocationResult{
-				Devices: resourceapi.DeviceAllocationResult{
-					Config: []resourceapi.DeviceAllocationConfiguration{
-						{
-							Source: "test-source",
-							DeviceConfiguration: resourceapi.DeviceConfiguration{
-								Opaque: &resourceapi.OpaqueDeviceConfiguration{
-									Driver: "test-driver",
-									Parameters: runtime.RawExtension{
-										Raw: rawBytes,
-									},
-								},
-							},
-						},
-						{
-							// Invalid/incomplete config
-							Source: "invalid-source",
-							DeviceConfiguration: resourceapi.DeviceConfiguration{
-								Opaque: &resourceapi.OpaqueDeviceConfiguration{
-									Driver: "test-driver",
-									Parameters: runtime.RawExtension{
-										Raw: invalidJSON,
-									},
-								},
-							},
-						},
-						{
-							// Missing opaque
-							Source: "other-source",
-						},
-					},
+	tests := []struct {
+		name              string
+		claim             *resourceapi.ResourceClaim
+		wantLen           int
+		wantContainerName string
+		wantImage         string
+	}{
+		{
+			name: "decodes valid ImageConfig and skips invalid/missing entries",
+			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
+				withImageConfig(t, ImageRef{
+					Source:        "test-source",
+					Driver:        "test-driver",
+					ContainerName: "test-container",
+					Image:         "custom-image:v1",
+				}),
+				// Invalid/incomplete config (empty ContainerName).
+				withImageConfig(t, ImageRef{
+					Source:        "invalid-source",
+					Driver:        "test-driver",
+					ContainerName: "",
+					Image:         "custom-image:v1",
+				}),
+				// Missing opaque.
+				func(c *resourceapi.ResourceClaim) {
+					c.Status.Allocation.Devices.Config = append(
+						c.Status.Allocation.Devices.Config,
+						resourceapi.DeviceAllocationConfiguration{Source: "other-source"},
+					)
 				},
-			},
+			),
+			wantLen:           1,
+			wantContainerName: "test-container",
+			wantImage:         "custom-image:v1",
 		},
 	}
 
-	configs := collectImageConfigs([]*resourceapi.ResourceClaim{claim})
-	if len(configs) != 1 {
-		t.Fatalf("expected 1 image config, got %d", len(configs))
-	}
-
-	if configs[0].ContainerName != "test-container" {
-		t.Errorf("expected ContainerName 'test-container', got %q", configs[0].ContainerName)
-	}
-	if configs[0].Image != "custom-image:v1" {
-		t.Errorf("expected Image 'custom-image:v1', got %q", configs[0].Image)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			configs := collectImageConfigs([]*resourceapi.ResourceClaim{tc.claim})
+			if len(configs) != tc.wantLen {
+				t.Fatalf("expected %d image config(s), got %d", tc.wantLen, len(configs))
+			}
+			if tc.wantLen > 0 {
+				if configs[0].ContainerName != tc.wantContainerName {
+					t.Errorf("ContainerName = %q, want %q", configs[0].ContainerName, tc.wantContainerName)
+				}
+				if configs[0].Image != tc.wantImage {
+					t.Errorf("Image = %q, want %q", configs[0].Image, tc.wantImage)
+				}
+			}
+		})
 	}
 }
 
