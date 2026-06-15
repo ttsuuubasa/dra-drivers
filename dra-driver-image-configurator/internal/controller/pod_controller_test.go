@@ -24,6 +24,152 @@ func createTestScheme() *runtime.Scheme {
 	return s
 }
 
+// ── builders ──────────────────────────────────────────────────────────────────
+
+type claimOption func(*resourceapi.ResourceClaim)
+type podOption func(*corev1.Pod)
+
+// DeviceRef uniquely identifies a device and optionally declares binding conditions.
+// Used as a named-argument style parameter across multiple builder functions.
+type DeviceRef struct {
+	Request           string
+	Driver            string
+	Pool              string
+	Device            string
+	ShareID           *types.UID
+	BindingConditions []string
+}
+
+// ImageRef specifies a container image override delivered via ImageConfig.
+// Source and Driver are used only when the ref is passed to withImageConfig
+// (they are ignored by withContainer).
+type ImageRef struct {
+	Source        string
+	Driver        string
+	ContainerName string
+	Image         string
+}
+
+// NameRef identifies a namespaced resource by name and namespace.
+type NameRef struct {
+	Name      string
+	Namespace string
+}
+
+// newClaim builds a ResourceClaim with the given name/namespace.
+func newClaim(ref NameRef, opts ...claimOption) *resourceapi.ResourceClaim {
+	c := &resourceapi.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: ref.Name, Namespace: ref.Namespace},
+	}
+	for _, o := range opts {
+		o(c)
+	}
+	return c
+}
+
+// withResult appends a device allocation result to the claim.
+func withResult(ref DeviceRef) claimOption {
+	return func(c *resourceapi.ResourceClaim) {
+		if c.Status.Allocation == nil {
+			c.Status.Allocation = &resourceapi.AllocationResult{}
+		}
+		c.Status.Allocation.Devices.Results = append(
+			c.Status.Allocation.Devices.Results,
+			resourceapi.DeviceRequestAllocationResult{
+				Request:           ref.Request,
+				Driver:            ref.Driver,
+				Pool:              ref.Pool,
+				Device:            ref.Device,
+				ShareID:           ref.ShareID,
+				BindingConditions: ref.BindingConditions,
+			},
+		)
+	}
+}
+
+// withDeviceCondition appends an AllocatedDeviceStatus with the given condition.
+func withDeviceCondition(ref DeviceRef, condition string, status metav1.ConditionStatus) claimOption {
+	return func(c *resourceapi.ResourceClaim) {
+		c.Status.Devices = append(c.Status.Devices, resourceapi.AllocatedDeviceStatus{
+			Driver: ref.Driver,
+			Pool:   ref.Pool,
+			Device: ref.Device,
+			Conditions: []metav1.Condition{
+				{Type: condition, Status: status},
+			},
+		})
+	}
+}
+
+// withImageConfig appends an opaque DeviceAllocationConfiguration whose payload
+// is an ImageConfig built from ref.ContainerName / ref.Image (JSON-marshaled).
+func withImageConfig(t *testing.T, ref ImageRef) claimOption {
+	t.Helper()
+	ic := &imagev1alpha1.ImageConfig{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: imagev1alpha1.SchemeGroupVersion.String(),
+			Kind:       "ImageConfig",
+		},
+		ContainerName: ref.ContainerName,
+		Image:         ref.Image,
+	}
+	raw, err := json.Marshal(ic)
+	if err != nil {
+		t.Fatalf("marshal ImageConfig: %v", err)
+	}
+	return func(c *resourceapi.ResourceClaim) {
+		if c.Status.Allocation == nil {
+			c.Status.Allocation = &resourceapi.AllocationResult{}
+		}
+		c.Status.Allocation.Devices.Config = append(
+			c.Status.Allocation.Devices.Config,
+			resourceapi.DeviceAllocationConfiguration{
+				Source: resourceapi.AllocationConfigSource(ref.Source),
+				DeviceConfiguration: resourceapi.DeviceConfiguration{
+					Opaque: &resourceapi.OpaqueDeviceConfiguration{
+						Driver:     ref.Driver,
+						Parameters: runtime.RawExtension{Raw: raw},
+					},
+				},
+			},
+		)
+	}
+}
+
+// newPod builds a Pod with the given name/namespace.
+func newPod(ref NameRef, opts ...podOption) *corev1.Pod {
+	p := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: ref.Name, Namespace: ref.Namespace},
+	}
+	for _, o := range opts {
+		o(p)
+	}
+	return p
+}
+
+// withContainer adds a container with the given name and image to the Pod.
+func withContainer(ref ImageRef) podOption {
+	return func(p *corev1.Pod) {
+		p.Spec.Containers = append(p.Spec.Containers, corev1.Container{
+			Name:  ref.ContainerName,
+			Image: ref.Image,
+		})
+	}
+}
+
+// withClaimRef adds a PodResourceClaimStatus referencing the given claim.
+func withClaimRef(claimName string) podOption {
+	name := claimName
+	return func(p *corev1.Pod) {
+		p.Status.ResourceClaimStatuses = append(
+			p.Status.ResourceClaimStatuses,
+			corev1.PodResourceClaimStatus{Name: "ref", ResourceClaimName: &name},
+		)
+	}
+}
+
+// ── isBindingConditionAlreadySet ─────────────────────────────────────────────
+
 func TestIsBindingConditionAlreadySet(t *testing.T) {
 	claim := &resourceapi.ResourceClaim{
 		Status: resourceapi.ResourceClaimStatus{
@@ -71,6 +217,8 @@ func TestIsBindingConditionAlreadySet(t *testing.T) {
 		t.Errorf("expected condition to not be set on empty claim")
 	}
 }
+
+// ── collectPendingBindingResults ──────────────────────────────────────────────
 
 func TestCollectPendingBindingResults(t *testing.T) {
 	shareID := types.UID("share-123")
@@ -158,6 +306,8 @@ func TestCollectPendingBindingResults(t *testing.T) {
 	}
 }
 
+// ── collectImageConfigs ───────────────────────────────────────────────────────
+
 func TestCollectImageConfigs(t *testing.T) {
 	ic := &imagev1alpha1.ImageConfig{
 		TypeMeta: metav1.TypeMeta{
@@ -225,6 +375,8 @@ func TestCollectImageConfigs(t *testing.T) {
 	}
 }
 
+// ── fetchClaims ───────────────────────────────────────────────────────────────
+
 func TestFetchClaims(t *testing.T) {
 	s := createTestScheme()
 
@@ -290,6 +442,8 @@ func TestFetchClaims(t *testing.T) {
 		t.Errorf("expected error when claim is not allocated")
 	}
 }
+
+// ── Reconcile ─────────────────────────────────────────────────────────────────
 
 func TestReconcile(t *testing.T) {
 	s := createTestScheme()
