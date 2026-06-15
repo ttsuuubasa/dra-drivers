@@ -553,29 +553,13 @@ func TestReconcile_PodNotFound(t *testing.T) {
 func TestReconcile_NoPendingBindingResults(t *testing.T) {
 	s := createTestScheme()
 	claimName := "claim-no-pending"
-	claim := &resourceapi.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      claimName,
-			Namespace: "test-ns",
-		},
-		Status: resourceapi.ResourceClaimStatus{
-			Allocation: &resourceapi.AllocationResult{},
-		},
-	}
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pod-no-pending",
-			Namespace: "test-ns",
-		},
-		Status: corev1.PodStatus{
-			ResourceClaimStatuses: []corev1.PodResourceClaimStatus{
-				{
-					Name:              "ref",
-					ResourceClaimName: &claimName,
-				},
-			},
-		},
-	}
+
+	pod := newPod(NameRef{Name: "pod-no-pending", Namespace: "test-ns"},
+		withClaimRef(claimName),
+	)
+	claim := newClaim(NameRef{Name: claimName, Namespace: "test-ns"}, func(c *resourceapi.ResourceClaim) {
+		c.Status.Allocation = &resourceapi.AllocationResult{}
+	})
 
 	fakeClient := fake.NewClientBuilder().WithScheme(s).WithObjects(pod, claim).Build()
 	reconciler := &PodReconciler{Client: fakeClient}
@@ -599,40 +583,16 @@ func TestReconcile_NoPendingBindingResults(t *testing.T) {
 func TestReconcile_NoImageConfigs(t *testing.T) {
 	s := createTestScheme()
 	claimName := "claim-no-configs"
-	claim := &resourceapi.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      claimName,
-			Namespace: "test-ns",
-		},
-		Status: resourceapi.ResourceClaimStatus{
-			Allocation: &resourceapi.AllocationResult{
-				Devices: resourceapi.DeviceAllocationResult{
-					Results: []resourceapi.DeviceRequestAllocationResult{
-						{
-							Driver: "test-driver",
-							BindingConditions: []string{
-								BindingConditionUpdateImage,
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pod-no-configs",
-			Namespace: "test-ns",
-		},
-		Status: corev1.PodStatus{
-			ResourceClaimStatuses: []corev1.PodResourceClaimStatus{
-				{
-					Name:              "ref",
-					ResourceClaimName: &claimName,
-				},
-			},
-		},
-	}
+
+	pod := newPod(NameRef{Name: "pod-no-configs", Namespace: "test-ns"},
+		withClaimRef(claimName),
+	)
+	claim := newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
+		withResult(DeviceRef{
+			Driver:            "test-driver",
+			BindingConditions: []string{BindingConditionUpdateImage},
+		}),
+	)
 
 	fakeClient := fake.NewClientBuilder().WithScheme(s).WithObjects(pod, claim).Build()
 	reconciler := &PodReconciler{Client: fakeClient}
