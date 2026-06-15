@@ -171,50 +171,72 @@ func withClaimRef(claimName string) podOption {
 // ── isBindingConditionAlreadySet ─────────────────────────────────────────────
 
 func TestIsBindingConditionAlreadySet(t *testing.T) {
-	claim := &resourceapi.ResourceClaim{
-		Status: resourceapi.ResourceClaimStatus{
-			Devices: []resourceapi.AllocatedDeviceStatus{
-				{
-					Driver: "test-driver",
-					Pool:   "test-pool",
-					Device: "test-device",
-					Conditions: []metav1.Condition{
-						{
-							Type:   BindingConditionUpdateImage,
-							Status: metav1.ConditionTrue,
-						},
-					},
-				},
+	tests := []struct {
+		name      string
+		claim     *resourceapi.ResourceClaim
+		result    *resourceapi.DeviceRequestAllocationResult
+		condition string
+		want      bool
+	}{
+		{
+			name: "expected condition to be already set",
+			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
+				withDeviceCondition(
+					DeviceRef{Driver: "test-driver", Pool: "test-pool", Device: "test-device"},
+					BindingConditionUpdateImage, metav1.ConditionTrue,
+				),
+			),
+			result: &resourceapi.DeviceRequestAllocationResult{
+				Driver: "test-driver", Pool: "test-pool", Device: "test-device",
 			},
+			condition: BindingConditionUpdateImage,
+			want:      true,
+		},
+		{
+			name: "Test non-matching condition status",
+			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
+				withDeviceCondition(
+					DeviceRef{Driver: "test-driver", Pool: "test-pool", Device: "test-device"},
+					BindingConditionUpdateImage, metav1.ConditionFalse,
+				),
+			),
+			result: &resourceapi.DeviceRequestAllocationResult{
+				Driver: "test-driver", Pool: "test-pool", Device: "test-device",
+			},
+			condition: BindingConditionUpdateImage,
+			want:      false,
+		},
+		{
+			name: "Test non-matching device",
+			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
+				withDeviceCondition(
+					DeviceRef{Driver: "test-driver", Pool: "test-pool", Device: "test-device"},
+					BindingConditionUpdateImage, metav1.ConditionTrue,
+				),
+			),
+			result: &resourceapi.DeviceRequestAllocationResult{
+				Driver: "test-driver", Pool: "test-pool", Device: "other-device",
+			},
+			condition: BindingConditionUpdateImage,
+			want:      false,
+		},
+		{
+			name:  "Test empty devices list",
+			claim: &resourceapi.ResourceClaim{},
+			result: &resourceapi.DeviceRequestAllocationResult{
+				Driver: "test-driver", Pool: "test-pool", Device: "test-device",
+			},
+			condition: BindingConditionUpdateImage,
+			want:      false,
 		},
 	}
 
-	result := &resourceapi.DeviceRequestAllocationResult{
-		Driver: "test-driver",
-		Pool:   "test-pool",
-		Device: "test-device",
-	}
-
-	if !isBindingConditionAlreadySet(claim, result, BindingConditionUpdateImage) {
-		t.Errorf("expected condition to be already set")
-	}
-
-	// Test non-matching condition status
-	claim.Status.Devices[0].Conditions[0].Status = metav1.ConditionFalse
-	if isBindingConditionAlreadySet(claim, result, BindingConditionUpdateImage) {
-		t.Errorf("expected condition to not be set when Status is False")
-	}
-
-	// Test non-matching device
-	result.Device = "other-device"
-	if isBindingConditionAlreadySet(claim, result, BindingConditionUpdateImage) {
-		t.Errorf("expected condition to not be set when Device differs")
-	}
-
-	// Test empty devices list
-	emptyClaim := &resourceapi.ResourceClaim{}
-	if isBindingConditionAlreadySet(emptyClaim, result, BindingConditionUpdateImage) {
-		t.Errorf("expected condition to not be set on empty claim")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isBindingConditionAlreadySet(tc.claim, tc.result, tc.condition); got != tc.want {
+				t.Errorf("isBindingConditionAlreadySet = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 
