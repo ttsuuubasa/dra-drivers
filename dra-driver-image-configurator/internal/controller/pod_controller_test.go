@@ -244,87 +244,68 @@ func TestIsBindingConditionAlreadySet(t *testing.T) {
 
 func TestCollectPendingBindingResults(t *testing.T) {
 	shareID := types.UID("share-123")
-	claim1 := &resourceapi.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{Name: "claim-1", Namespace: "default"},
-		Status: resourceapi.ResourceClaimStatus{
-			Allocation: &resourceapi.AllocationResult{
-				Devices: resourceapi.DeviceAllocationResult{
-					Results: []resourceapi.DeviceRequestAllocationResult{
-						{
-							Request: "req-1",
-							Driver:  "test-driver",
-							Pool:    "test-pool",
-							Device:  "dev-1",
-							ShareID: &shareID,
-							BindingConditions: []string{
-								BindingConditionUpdateImage,
-							},
-						},
-						{
-							// No matching binding condition
-							Request: "req-other",
-							Driver:  "test-driver",
-							Pool:    "test-pool",
-							Device:  "dev-other",
-						},
-					},
-				},
+
+	tests := []struct {
+		name          string
+		claims        []*resourceapi.ResourceClaim
+		wantLen       int
+		wantClaimName string
+		wantDevice    string
+		wantShareID   *types.UID
+	}{
+		{
+			name: "returns only claims with pending binding condition not yet satisfied",
+			claims: []*resourceapi.ResourceClaim{
+				// claim-1: one device requires the binding condition (pending), another has no condition.
+				newClaim(NameRef{Name: "claim-1", Namespace: "default"},
+					withResult(DeviceRef{
+						Request: "req-1", Driver: "test-driver", Pool: "test-pool", Device: "dev-1",
+						ShareID:           &shareID,
+						BindingConditions: []string{BindingConditionUpdateImage},
+					}),
+					withResult(DeviceRef{
+						Request: "req-other", Driver: "test-driver", Pool: "test-pool", Device: "dev-other",
+					}),
+				),
+				// claim-2: condition is required but already set to True.
+				newClaim(NameRef{Name: "claim-2", Namespace: "default"},
+					withResult(DeviceRef{
+						Request: "req-2", Driver: "test-driver", Pool: "test-pool", Device: "dev-2",
+						BindingConditions: []string{BindingConditionUpdateImage},
+					}),
+					withDeviceCondition(
+						DeviceRef{Driver: "test-driver", Pool: "test-pool", Device: "dev-2"},
+						BindingConditionUpdateImage, metav1.ConditionTrue,
+					),
+				),
 			},
+			wantLen:       1,
+			wantClaimName: "claim-1",
+			wantDevice:    "dev-1",
+			wantShareID:   &shareID,
 		},
 	}
 
-	// claim2 has condition already set
-	claim2 := &resourceapi.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{Name: "claim-2", Namespace: "default"},
-		Status: resourceapi.ResourceClaimStatus{
-			Allocation: &resourceapi.AllocationResult{
-				Devices: resourceapi.DeviceAllocationResult{
-					Results: []resourceapi.DeviceRequestAllocationResult{
-						{
-							Request: "req-2",
-							Driver:  "test-driver",
-							Pool:    "test-pool",
-							Device:  "dev-2",
-							BindingConditions: []string{
-								BindingConditionUpdateImage,
-							},
-						},
-					},
-				},
-			},
-			Devices: []resourceapi.AllocatedDeviceStatus{
-				{
-					Driver: "test-driver",
-					Pool:   "test-pool",
-					Device: "dev-2",
-					Conditions: []metav1.Condition{
-						{
-							Type:   BindingConditionUpdateImage,
-							Status: metav1.ConditionTrue,
-						},
-					},
-				},
-			},
-		},
-	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			pending := collectPendingBindingResults(tc.claims)
 
-	claims := []*resourceapi.ResourceClaim{claim1, claim2}
-	pending := collectPendingBindingResults(claims)
-
-	if len(pending) != 1 {
-		t.Fatalf("expected 1 pending claim result, got %d", len(pending))
-	}
-	if pending[0].Claim.Name != "claim-1" {
-		t.Errorf("expected pending claim to be claim-1, got %s", pending[0].Claim.Name)
-	}
-	if len(pending[0].Results) != 1 {
-		t.Fatalf("expected 1 pending device result, got %d", len(pending[0].Results))
-	}
-	if pending[0].Results[0].Device != "dev-1" {
-		t.Errorf("expected pending device to be dev-1, got %s", pending[0].Results[0].Device)
-	}
-	if pending[0].Results[0].ShareID == nil || *pending[0].Results[0].ShareID != shareID {
-		t.Errorf("expected share ID to be %q, got %v", shareID, pending[0].Results[0].ShareID)
+			if len(pending) != tc.wantLen {
+				t.Fatalf("expected %d pending claim result, got %d", tc.wantLen, len(pending))
+			}
+			if pending[0].Claim.Name != tc.wantClaimName {
+				t.Errorf("expected pending claim to be %s, got %s", tc.wantClaimName, pending[0].Claim.Name)
+			}
+			if len(pending[0].Results) != 1 {
+				t.Fatalf("expected 1 pending device result, got %d", len(pending[0].Results))
+			}
+			if pending[0].Results[0].Device != tc.wantDevice {
+				t.Errorf("expected pending device to be %s, got %s", tc.wantDevice, pending[0].Results[0].Device)
+			}
+			if pending[0].Results[0].ShareID == nil || *pending[0].Results[0].ShareID != *tc.wantShareID {
+				t.Errorf("expected share ID to be %q, got %v", *tc.wantShareID, pending[0].Results[0].ShareID)
+			}
+		})
 	}
 }
 
