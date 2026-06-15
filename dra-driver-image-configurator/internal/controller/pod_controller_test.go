@@ -10,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -371,67 +372,57 @@ func TestCollectImageConfigs(t *testing.T) {
 
 func TestFetchClaims(t *testing.T) {
 	s := createTestScheme()
-
 	claimName := "test-claim"
-	claim := &resourceapi.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      claimName,
-			Namespace: "default",
-		},
-		Status: resourceapi.ResourceClaimStatus{
-			Allocation: &resourceapi.AllocationResult{},
-		},
-	}
 
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pod",
-			Namespace: "default",
-		},
-		Status: corev1.PodStatus{
-			ResourceClaimStatuses: []corev1.PodResourceClaimStatus{
-				{
-					Name:              "claim-ref",
-					ResourceClaimName: &claimName,
-				},
+	pod := newPod(NameRef{Name: "test-pod", Namespace: "default"}, withClaimRef(claimName))
+
+	tests := []struct {
+		name    string
+		claims  []client.Object
+		wantLen int
+		wantErr bool
+	}{
+		{
+			name: "fetches allocated claim referenced by pod",
+			claims: []client.Object{
+				newClaim(NameRef{Name: claimName, Namespace: "default"}, func(c *resourceapi.ResourceClaim) {
+					c.Status.Allocation = &resourceapi.AllocationResult{}
+				}),
 			},
+			wantLen: 1,
+		},
+		{
+			name:    "Test claim not found",
+			claims:  nil,
+			wantErr: true,
+		},
+		{
+			name: "Test claim not allocated",
+			claims: []client.Object{
+				newClaim(NameRef{Name: claimName, Namespace: "default"}), // no Allocation
+			},
+			wantErr: true,
 		},
 	}
 
-	fakeClient := fake.NewClientBuilder().WithScheme(s).WithObjects(claim).Build()
-	reconciler := &PodReconciler{Client: fakeClient}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeClient := fake.NewClientBuilder().WithScheme(s).WithObjects(tc.claims...).Build()
+			r := &PodReconciler{Client: fakeClient}
 
-	claims, err := reconciler.fetchClaims(context.Background(), pod)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(claims) != 1 {
-		t.Fatalf("expected 1 claim, got %d", len(claims))
-	}
-	if claims[0].Name != claimName {
-		t.Errorf("expected claim name %q, got %q", claimName, claims[0].Name)
-	}
-
-	// Test claim not found
-	emptyClient := fake.NewClientBuilder().WithScheme(s).Build()
-	reconciler.Client = emptyClient
-	_, err = reconciler.fetchClaims(context.Background(), pod)
-	if err == nil {
-		t.Errorf("expected error when claim is not found")
-	}
-
-	// Test claim not allocated
-	unallocatedClaim := &resourceapi.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      claimName,
-			Namespace: "default",
-		},
-	}
-	fakeClient = fake.NewClientBuilder().WithScheme(s).WithObjects(unallocatedClaim).Build()
-	reconciler.Client = fakeClient
-	_, err = reconciler.fetchClaims(context.Background(), pod)
-	if err == nil {
-		t.Errorf("expected error when claim is not allocated")
+			claims, err := r.fetchClaims(context.Background(), pod)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("fetchClaims() error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if !tc.wantErr {
+				if len(claims) != tc.wantLen {
+					t.Fatalf("expected %d claim(s), got %d", tc.wantLen, len(claims))
+				}
+				if claims[0].Name != claimName {
+					t.Errorf("expected claim name %q, got %q", claimName, claims[0].Name)
+				}
+			}
+		})
 	}
 }
 
