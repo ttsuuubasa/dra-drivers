@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"github.com/distribution/reference"
 	imagev1alpha1 "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/api/v1alpha1"
 )
 
@@ -134,6 +135,9 @@ func collectImageConfigs(claims []*resourceapi.ResourceClaim) []*imagev1alpha1.I
 			}
 			ic, ok := obj.(*imagev1alpha1.ImageConfig)
 			if !ok || ic.ContainerName == "" || ic.Image == "" {
+				continue
+			}
+			if _, err := reference.ParseNormalizedNamed(ic.Image); err != nil {
 				continue
 			}
 			imageConfigs = append(imageConfigs, ic)

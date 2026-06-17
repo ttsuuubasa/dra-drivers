@@ -336,6 +336,13 @@ func TestCollectImageConfigs(t *testing.T) {
 					ContainerName: "",
 					Image:         "custom-image:v1",
 				}),
+				// Invalid image name formatting (extra space).
+				withImageConfig(t, ImageRef{
+					Source:        "invalid-format",
+					Driver:        "test-driver",
+					ContainerName: "test-container",
+					Image:         "custom-image :v1",
+				}),
 				// Missing opaque.
 				func(c *resourceapi.ResourceClaim) {
 					c.Status.Allocation.Devices.Config = append(
