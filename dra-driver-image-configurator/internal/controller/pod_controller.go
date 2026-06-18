@@ -86,10 +86,29 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 // fetchClaims returns all ResourceClaims referenced by the pod.
 func (r *PodReconciler) fetchClaims(ctx context.Context, pod *corev1.Pod) ([]*resourceapi.ResourceClaim, error) {
 	var claims []*resourceapi.ResourceClaim
+	//generated ResourceClaims
 	for _, rcs := range pod.Status.ResourceClaimStatuses {
 		claimKey := types.NamespacedName{
 			Namespace: pod.Namespace,
 			Name:      *rcs.ResourceClaimName,
+		}
+		claim := &resourceapi.ResourceClaim{}
+		if err := r.Client.Get(ctx, claimKey, claim); err != nil {
+			return nil, fmt.Errorf("get claim %s: %w", claimKey, err)
+		}
+		if claim.Status.Allocation == nil {
+			return nil, fmt.Errorf("claim %s not yet allocated", claimKey)
+		}
+		claims = append(claims, claim)
+	}
+	//static ResourceClaims
+	for _, rc := range pod.Spec.ResourceClaims {
+		if rc.ResourceClaimName == nil {
+			continue
+		}
+		claimKey := types.NamespacedName{
+			Namespace: pod.Namespace,
+			Name:      *rc.ResourceClaimName,
 		}
 		claim := &resourceapi.ResourceClaim{}
 		if err := r.Client.Get(ctx, claimKey, claim); err != nil {
