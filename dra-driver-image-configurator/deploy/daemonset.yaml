@@ -39,12 +39,41 @@ subjects:
     name: dra-driver-image-configurator
     namespace: kube-system
 ---
+# Lease for controller-runtime leader election.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dra-driver-image-configurator-leader-election
+  namespace: kube-system
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dra-driver-image-configurator-leader-election
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dra-driver-image-configurator-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: dra-driver-image-configurator
+    namespace: kube-system
+---
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
   name: dra-driver-image-configurator
   namespace: kube-system
 spec:
+  replicas: 2
   selector:
     matchLabels:
       app: dra-driver-image-configurator
@@ -58,8 +87,3 @@ spec:
         - name: controller
           image: registry.k8s.io/dra-driver-image-configurator:latest
           imagePullPolicy: IfNotPresent
-          env:
-            - name: NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
