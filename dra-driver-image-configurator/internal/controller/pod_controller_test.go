@@ -499,6 +499,9 @@ func TestReconcile(t *testing.T) {
 			}
 
 			// Verify ResourceClaim status was updated with the binding condition.
+			if tc.wantConditionTyp == "" {
+				return
+			}
 			updatedClaim := &resourceapi.ResourceClaim{}
 			if err := fakeClient.Get(context.Background(), types.NamespacedName{Namespace: tc.claim.Namespace, Name: tc.claim.Name}, updatedClaim); err != nil {
 				t.Fatalf("failed to get updated claim: %v", err)
