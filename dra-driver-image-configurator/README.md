@@ -256,7 +256,7 @@ The controller publishes the `image-configurator.x-k8s.io` ResourceSlice and
 watches Pods for pending binding conditions.
 
 ```bash
-kubectl apply -f deploy/daemonset.yaml
+kubectl apply -f deploy/deployment.yaml
 ```
 
 After startup, an additional ResourceSlice appears:
