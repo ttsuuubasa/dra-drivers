@@ -461,6 +461,27 @@ func TestReconcile(t *testing.T) {
 			wantImages:       []string{"new-image:v2", "other-image:v1"},
 			wantConditionTyp: BindingConditionUpdateImage,
 		},
+		{
+			name: "no container matches any ImageConfig",
+			pod: newPod(NameRef{Name: "reconcile-pod", Namespace: "test-ns"},
+				withContainer(ImageRef{ContainerName: "target-container", Image: "old-image:v1"}),
+				withContainer(ImageRef{ContainerName: "other-container", Image: "other-image:v1"}),
+				withClaimRef(claimName),
+			),
+			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
+				withImageConfig(t, ImageRef{
+					ContainerName: "non-matching-container",
+					Image:         "new-image:v2",
+				}),
+				withResult(DeviceRef{
+					Driver: "test-driver", Pool: "test-pool", Device: "test-device",
+					BindingConditions: []string{BindingConditionUpdateImage},
+				}),
+			),
+			wantImages:  []string{"old-image:v1", "other-image:v1"},
+			wantError:   true,
+			wantRequeue: false,
+		},
 	}
 
 	for _, tc := range tests {
