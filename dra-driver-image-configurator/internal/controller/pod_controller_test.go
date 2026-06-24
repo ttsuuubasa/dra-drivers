@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	imagev1alpha1 "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/api/v1alpha1"
@@ -433,11 +434,12 @@ func TestReconcile(t *testing.T) {
 	claimName := "reconcile-claim"
 
 	tests := []struct {
-		name             string
-		pod              *corev1.Pod
-		claim            *resourceapi.ResourceClaim
-		wantImages       []string
-		wantConditionTyp string
+		name                string
+		pod                 *corev1.Pod
+		claim               *resourceapi.ResourceClaim
+		wantImages          []string
+		wantConditionTyp    string
+		wantPodUpdateCalled bool
 	}{
 		{
 			name: "patches container image and sets binding condition",
@@ -456,17 +458,47 @@ func TestReconcile(t *testing.T) {
 					BindingConditions: []string{BindingConditionUpdateImage},
 				}),
 			),
-			wantImages:       []string{"new-image:v2", "other-image:v1"},
-			wantConditionTyp: BindingConditionUpdateImage,
+			wantImages:          []string{"new-image:v2", "other-image:v1"},
+			wantConditionTyp:    BindingConditionUpdateImage,
+			wantPodUpdateCalled: true,
+		},
+		{
+			name: "container image already matches ImageConfig, still sets binding condition, no update needed",
+			pod: newPod(NameRef{Name: "reconcile-pod", Namespace: "test-ns"},
+				withContainer(ImageRef{ContainerName: "target-container", Image: "new-image:v2"}),
+				withClaimRef(claimName),
+			),
+			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
+				withImageConfig(t, ImageRef{
+					ContainerName: "target-container",
+					Image:         "new-image:v2",
+				}),
+				withResult(DeviceRef{
+					Driver: "test-driver", Pool: "test-pool", Device: "test-device",
+					BindingConditions: []string{BindingConditionUpdateImage},
+				}),
+			),
+			wantImages:          []string{"new-image:v2"},
+			wantConditionTyp:    BindingConditionUpdateImage,
+			wantPodUpdateCalled: false,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			podUpdateCalled := false
 			fakeClient := fake.NewClientBuilder().
 				WithScheme(s).
 				WithObjects(tc.pod, tc.claim).
 				WithStatusSubresource(&resourceapi.ResourceClaim{}).
+				WithInterceptorFuncs(interceptor.Funcs{
+					Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+						if _, ok := obj.(*corev1.Pod); ok {
+							podUpdateCalled = true
+						}
+						return c.Update(ctx, obj, opts...)
+					},
+				}).
 				Build()
 			reconciler := &PodReconciler{Client: fakeClient}
 
@@ -484,6 +516,9 @@ func TestReconcile(t *testing.T) {
 			}
 			if res.Requeue {
 				t.Errorf("unexpected Requeue")
+			}
+			if podUpdateCalled != tc.wantPodUpdateCalled {
+				t.Errorf("pod Update called = %v, want %v", podUpdateCalled, tc.wantPodUpdateCalled)
 			}
 
 			// Verify pod images were updated as expected.
