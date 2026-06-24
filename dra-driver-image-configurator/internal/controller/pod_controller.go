@@ -164,6 +164,13 @@ func isBindingConditionAlreadySet(claim *resourceapi.ResourceClaim, result *reso
 
 // patchImages updates container images on the pod according to the provided ImageConfigs.
 func (r *PodReconciler) patchImages(ctx context.Context, pod *corev1.Pod, imageConfigs []*imagev1alpha1.ImageConfig) error {
+	for i := range pod.Spec.InitContainers {
+		for _, ic := range imageConfigs {
+			if pod.Spec.InitContainers[i].Name == ic.ContainerName {
+				pod.Spec.InitContainers[i].Image = ic.Image
+			}
+		}
+	}
 	for i := range pod.Spec.Containers {
 		for _, ic := range imageConfigs {
 			if pod.Spec.Containers[i].Name == ic.ContainerName {
