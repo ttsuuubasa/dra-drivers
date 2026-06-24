@@ -438,6 +438,8 @@ func TestReconcile(t *testing.T) {
 		claim            *resourceapi.ResourceClaim
 		wantImages       []string
 		wantConditionTyp string
+		wantError        bool
+		wantRequeue      bool
 	}{
 		{
 			name: "patches container image and sets binding condition",
@@ -479,11 +481,23 @@ func TestReconcile(t *testing.T) {
 
 			// Run Reconcile
 			res, err := reconciler.Reconcile(context.Background(), req)
-			if err != nil {
-				t.Fatalf("Reconcile failed: %v", err)
+			if tc.wantError {
+				if err == nil {
+					t.Fatalf("expected error, got none")
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("Reconcile failed: %v", err)
+				}
 			}
-			if res.Requeue {
-				t.Errorf("unexpected Requeue")
+			if tc.wantRequeue {
+				if !res.Requeue {
+					t.Errorf("expected Requeue, got none")
+				}
+			} else {
+				if res.Requeue {
+					t.Errorf("unexpected Requeue")
+				}
 			}
 
 			// Verify pod images were updated as expected.
