@@ -158,6 +158,16 @@ func withContainer(ref ImageRef) podOption {
 	}
 }
 
+// withInitContainer adds an init container with the given name and image to the Pod.
+func withInitContainer(ref ImageRef) podOption {
+	return func(p *corev1.Pod) {
+		p.Spec.InitContainers = append(p.Spec.InitContainers, corev1.Container{
+			Name:  ref.ContainerName,
+			Image: ref.Image,
+		})
+	}
+}
+
 // withClaimRef adds a PodResourceClaimStatus referencing the given claim.
 func withClaimRef(claimName string) podOption {
 	name := claimName
@@ -437,6 +447,7 @@ func TestReconcile(t *testing.T) {
 		pod              *corev1.Pod
 		claim            *resourceapi.ResourceClaim
 		wantImages       []string
+		wantInitImages   []string
 		wantConditionTyp string
 	}{
 		{
@@ -505,6 +516,27 @@ func TestReconcile(t *testing.T) {
 			),
 			wantImages: []string{"old-image:v1"},
 		},
+		{
+			name: "patches initContainer image and sets binding condition",
+			pod: newPod(NameRef{Name: "reconcile-pod", Namespace: "test-ns"},
+				withInitContainer(ImageRef{ContainerName: "target-container", Image: "old-image:v1"}),
+				withContainer(ImageRef{ContainerName: "other-container", Image: "other-image:v1"}),
+				withClaimRef(claimName),
+			),
+			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
+				withImageConfig(t, ImageRef{
+					ContainerName: "target-container",
+					Image:         "new-image:v2",
+				}),
+				withResult(DeviceRef{
+					Driver: "test-driver", Pool: "test-pool", Device: "test-device",
+					BindingConditions: []string{BindingConditionUpdateImage},
+				}),
+			),
+			wantImages:       []string{"other-image:v1"},
+			wantInitImages:   []string{"new-image:v2"},
+			wantConditionTyp: BindingConditionUpdateImage,
+		},
 	}
 
 	for _, tc := range tests {
@@ -541,6 +573,11 @@ func TestReconcile(t *testing.T) {
 			for i, want := range tc.wantImages {
 				if got := updatedPod.Spec.Containers[i].Image; got != want {
 					t.Errorf("container %d image = %q, want %q", i, got, want)
+				}
+			}
+			for i, want := range tc.wantInitImages {
+				if got := updatedPod.Spec.InitContainers[i].Image; got != want {
+					t.Errorf("initContainer %d image = %q, want %q", i, got, want)
 				}
 			}
 
