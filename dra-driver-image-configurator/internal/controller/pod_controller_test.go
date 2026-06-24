@@ -459,6 +459,29 @@ func TestReconcile(t *testing.T) {
 			wantImages:       []string{"new-image:v2", "other-image:v1"},
 			wantConditionTyp: BindingConditionUpdateImage,
 		},
+		{
+			name: "nothing happens if Pod has DeletionTimestamp set",
+			pod: newPod(NameRef{Name: "pod-deleting", Namespace: "test-ns"},
+				withContainer(ImageRef{ContainerName: "target-container", Image: "old-image:v1"}),
+				withClaimRef(claimName),
+				func(p *corev1.Pod) {
+					now := metav1.Now()
+					p.DeletionTimestamp = &now
+					p.Finalizers = []string{"test-finalizer"}
+				},
+			),
+			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
+				withImageConfig(t, ImageRef{
+					ContainerName: "target-container",
+					Image:         "new-image:v2",
+				}),
+				withResult(DeviceRef{
+					Driver: "test-driver", Pool: "test-pool", Device: "test-device",
+					BindingConditions: []string{BindingConditionUpdateImage},
+				}),
+			),
+			wantImages: []string{"old-image:v1"},
+		},
 	}
 
 	for _, tc := range tests {
