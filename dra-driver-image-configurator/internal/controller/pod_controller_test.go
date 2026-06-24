@@ -460,6 +460,27 @@ func TestReconcile(t *testing.T) {
 			wantConditionTyp: BindingConditionUpdateImage,
 		},
 		{
+			name: "nothing happens if claim has no pending binding results",
+			pod: newPod(NameRef{Name: "pod-no-configs", Namespace: "test-ns"},
+				withClaimRef(claimName),
+			),
+			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
+				withResult(DeviceRef{
+					Driver:            "test-driver",
+					BindingConditions: []string{BindingConditionUpdateImage},
+				}),
+			),
+		},
+		{
+			name: "nothing happens if claim has no ImageConfig",
+			pod: newPod(NameRef{Name: "pod-no-image-config", Namespace: "test-ns"},
+				withClaimRef(claimName),
+			),
+			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"}, func(c *resourceapi.ResourceClaim) {
+				c.Status.Allocation = &resourceapi.AllocationResult{}
+			}),
+		},
+		{
 			name: "nothing happens if Pod has DeletionTimestamp set",
 			pod: newPod(NameRef{Name: "pod-deleting", Namespace: "test-ns"},
 				withContainer(ImageRef{ContainerName: "target-container", Image: "old-image:v1"}),
@@ -572,69 +593,6 @@ func TestReconcile_PodNotFound(t *testing.T) {
 	res, err := reconciler.Reconcile(context.Background(), req)
 	if err != nil {
 		t.Fatalf("expected no error for non-existent pod, got %v", err)
-	}
-	if res.Requeue {
-		t.Errorf("unexpected Requeue")
-	}
-}
-
-func TestReconcile_NoPendingBindingResults(t *testing.T) {
-	s := createTestScheme()
-	claimName := "claim-no-pending"
-
-	pod := newPod(NameRef{Name: "pod-no-pending", Namespace: "test-ns"},
-		withClaimRef(claimName),
-	)
-	claim := newClaim(NameRef{Name: claimName, Namespace: "test-ns"}, func(c *resourceapi.ResourceClaim) {
-		c.Status.Allocation = &resourceapi.AllocationResult{}
-	})
-
-	fakeClient := fake.NewClientBuilder().WithScheme(s).WithObjects(pod, claim).Build()
-	reconciler := &PodReconciler{Client: fakeClient}
-
-	req := reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Namespace: "test-ns",
-			Name:      "pod-no-pending",
-		},
-	}
-
-	res, err := reconciler.Reconcile(context.Background(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if res.Requeue {
-		t.Errorf("unexpected Requeue")
-	}
-}
-
-func TestReconcile_NoImageConfigs(t *testing.T) {
-	s := createTestScheme()
-	claimName := "claim-no-configs"
-
-	pod := newPod(NameRef{Name: "pod-no-configs", Namespace: "test-ns"},
-		withClaimRef(claimName),
-	)
-	claim := newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
-		withResult(DeviceRef{
-			Driver:            "test-driver",
-			BindingConditions: []string{BindingConditionUpdateImage},
-		}),
-	)
-
-	fakeClient := fake.NewClientBuilder().WithScheme(s).WithObjects(pod, claim).Build()
-	reconciler := &PodReconciler{Client: fakeClient}
-
-	req := reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Namespace: "test-ns",
-			Name:      "pod-no-configs",
-		},
-	}
-
-	res, err := reconciler.Reconcile(context.Background(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
 	}
 	if res.Requeue {
 		t.Errorf("unexpected Requeue")
