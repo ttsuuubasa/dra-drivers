@@ -19,7 +19,7 @@ import (
 const BindingConditionUpdateImage = "image-configurator.x-k8s.io/image-updated"
 const BindingFailureConditionUpdateImage = "image-configurator.x-k8s.io/image-update-failed"
 
-// PodReconciler watches Pods nominated to this node and patches their
+// PodReconciler watches Pods nominated to a node and patches their
 // container images based on the associated ResourceClaim config.
 type PodReconciler struct {
 	Client client.Client
@@ -45,6 +45,10 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 	var pod corev1.Pod
 	if err := r.Client.Get(ctx, req.NamespacedName, &pod); err != nil {
 		return reconcile.Result{}, client.IgnoreNotFound(err)
+	}
+
+	if pod.DeletionTimestamp != nil {
+		return reconcile.Result{}, nil
 	}
 
 	claims, err := r.fetchClaims(ctx, &pod)
