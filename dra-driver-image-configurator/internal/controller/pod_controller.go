@@ -47,6 +47,10 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 		return reconcile.Result{}, client.IgnoreNotFound(err)
 	}
 
+	if pod.DeletionTimestamp != nil {
+		return reconcile.Result{}, nil
+	}
+
 	claims, err := r.fetchClaims(ctx, &pod)
 	if err != nil {
 		return reconcile.Result{}, err
