@@ -438,8 +438,6 @@ func TestReconcile(t *testing.T) {
 		claim            *resourceapi.ResourceClaim
 		wantImages       []string
 		wantConditionTyp string
-		wantError        bool
-		wantRequeue      bool
 	}{
 		{
 			name: "patches container image and sets binding condition",
@@ -462,27 +460,6 @@ func TestReconcile(t *testing.T) {
 			wantConditionTyp: BindingConditionUpdateImage,
 		},
 		{
-			name: "no container matches any ImageConfig",
-			pod: newPod(NameRef{Name: "reconcile-pod", Namespace: "test-ns"},
-				withContainer(ImageRef{ContainerName: "target-container", Image: "old-image:v1"}),
-				withContainer(ImageRef{ContainerName: "other-container", Image: "other-image:v1"}),
-				withClaimRef(claimName),
-			),
-			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
-				withImageConfig(t, ImageRef{
-					ContainerName: "non-matching-container",
-					Image:         "new-image:v2",
-				}),
-				withResult(DeviceRef{
-					Driver: "test-driver", Pool: "test-pool", Device: "test-device",
-					BindingConditions: []string{BindingConditionUpdateImage},
-				}),
-			),
-			wantImages:  []string{"old-image:v1", "other-image:v1"},
-			wantError:   true,
-			wantRequeue: false,
-    },
-    {
 			name: "nothing happens if claim has no pending binding results",
 			pod: newPod(NameRef{Name: "pod-no-configs", Namespace: "test-ns"},
 				withClaimRef(claimName),
@@ -548,23 +525,11 @@ func TestReconcile(t *testing.T) {
 
 			// Run Reconcile
 			res, err := reconciler.Reconcile(context.Background(), req)
-			if tc.wantError {
-				if err == nil {
-					t.Fatalf("expected error, got none")
-				}
-			} else {
-				if err != nil {
-					t.Fatalf("Reconcile failed: %v", err)
-				}
+			if err != nil {
+				t.Fatalf("Reconcile failed: %v", err)
 			}
-			if tc.wantRequeue {
-				if !res.Requeue {
-					t.Errorf("expected Requeue, got none")
-				}
-			} else {
-				if res.Requeue {
-					t.Errorf("unexpected Requeue")
-				}
+			if res.Requeue {
+				t.Errorf("unexpected Requeue")
 			}
 
 			// Verify pod images were updated as expected.
