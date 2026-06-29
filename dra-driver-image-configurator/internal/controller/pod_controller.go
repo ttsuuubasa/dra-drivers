@@ -130,6 +130,7 @@ func collectPendingBindingResults(claims []*resourceapi.ResourceClaim) []claimBi
 func collectImageConfigs(claims []*resourceapi.ResourceClaim) ([]*imagev1alpha1.ImageConfig, error) {
 	decoder := imagev1alpha1.Codec.UniversalDeserializer()
 	var imageConfigs []*imagev1alpha1.ImageConfig
+	imageMap := make(map[string]string)
 	for _, claim := range claims {
 		for _, cfg := range claim.Status.Allocation.Devices.Config {
 			if cfg.Opaque == nil || cfg.Opaque.Parameters.Raw == nil {
@@ -143,6 +144,10 @@ func collectImageConfigs(claims []*resourceapi.ResourceClaim) ([]*imagev1alpha1.
 			if !ok || ic.ContainerName == "" || ic.Image == "" {
 				return nil, reconcile.TerminalError(fmt.Errorf("ContainerName or Image empty: %w", err))
 			}
+			if image, conflict := imageMap[ic.ContainerName]; conflict && image != ic.Image {
+				return nil, reconcile.TerminalError(fmt.Errorf("conflicting ImageConfigs for container %q: %q vs %q", ic.ContainerName, image, ic.Image))
+			}
+			imageMap[ic.ContainerName] = ic.Image
 			imageConfigs = append(imageConfigs, ic)
 		}
 	}
