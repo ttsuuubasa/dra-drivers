@@ -173,16 +173,17 @@ func isBindingConditionAlreadySet(claim *resourceapi.ResourceClaim, result *reso
 // patchImages updates container images on the pod according to the provided ImageConfigs.
 func (r *PodReconciler) patchImages(ctx context.Context, pod *corev1.Pod, imageConfigs []*imagev1alpha1.ImageConfig) error {
 	containerMatched := false
-	for i := range pod.Spec.Containers {
-		for _, ic := range imageConfigs {
+	for _, ic := range imageConfigs {
+		for i := range pod.Spec.Containers {
 			if pod.Spec.Containers[i].Name == ic.ContainerName {
 				containerMatched = true
 				pod.Spec.Containers[i].Image = ic.Image
 			}
 		}
-	}
-	if !containerMatched {
-		return reconcile.TerminalError(fmt.Errorf("no ImageConfig matched any container in pod %s/%s", pod.Namespace, pod.Name))
+		if !containerMatched {
+			return reconcile.TerminalError(fmt.Errorf("containerName %s in ImageConfig doesn't match any container in pod %s/%s", ic.ContainerName, pod.Namespace, pod.Name))
+		}
+		containerMatched = false
 	}
 	if err := r.Client.Update(ctx, pod); err != nil {
 		return fmt.Errorf("update pod %s/%s: %w", pod.Namespace, pod.Name, err)
