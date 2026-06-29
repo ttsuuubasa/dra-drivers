@@ -3,6 +3,8 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -319,7 +321,37 @@ func TestCollectImageConfigs(t *testing.T) {
 		wantLen           int
 		wantContainerName string
 		wantImage         string
+		wantRequeue       bool
+		errMsg            string
 	}{
+		{
+			name: "returns TerminalError in case of opaque parameter decode failure or unexpected type",
+			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
+				withImageConfig(t, ImageRef{
+					Source:        "test-source",
+					Driver:        "test-driver",
+					ContainerName: "test-container",
+					Image:         "custom-image:v1",
+				}),
+				func(c *resourceapi.ResourceClaim) {
+					c.Status.Allocation = &resourceapi.AllocationResult{}
+					c.Status.Allocation.Devices.Config = append(
+						c.Status.Allocation.Devices.Config,
+						resourceapi.DeviceAllocationConfiguration{
+							DeviceConfiguration: resourceapi.DeviceConfiguration{
+								Opaque: &resourceapi.OpaqueDeviceConfiguration{
+									Driver:     "test-driver",
+									Parameters: runtime.RawExtension{Raw: []byte("not-valid-json")},
+								},
+							},
+						},
+					)
+				},
+			),
+			wantLen:     0,
+			wantRequeue: false,
+			errMsg:      "Opaque parameter decode failure / unexpected type:",
+		},
 		{
 			name: "decodes valid ImageConfig and skips invalid/missing entries",
 			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
@@ -352,7 +384,15 @@ func TestCollectImageConfigs(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			configs := collectImageConfigs([]*resourceapi.ResourceClaim{tc.claim})
+			configs, err := collectImageConfigs([]*resourceapi.ResourceClaim{tc.claim})
+			if err != nil {
+				if tc.errMsg == "" || !strings.Contains(err.Error(), tc.errMsg) {
+					t.Fatalf("unexpected collectImageConfigs() error = %v", err)
+				}
+				if !tc.wantRequeue && !errors.Is(err, reconcile.TerminalError(nil)) {
+					t.Fatalf("expected TerminalError, got %v", err)
+				}
+			}
 			if len(configs) != tc.wantLen {
 				t.Fatalf("expected %d image config(s), got %d", tc.wantLen, len(configs))
 			}
