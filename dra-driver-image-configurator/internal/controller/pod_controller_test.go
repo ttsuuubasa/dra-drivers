@@ -327,12 +327,6 @@ func TestCollectImageConfigs(t *testing.T) {
 		{
 			name: "returns TerminalError in case of opaque parameter decode failure or unexpected type",
 			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
-				withImageConfig(t, ImageRef{
-					Source:        "test-source",
-					Driver:        "test-driver",
-					ContainerName: "test-container",
-					Image:         "custom-image:v1",
-				}),
 				func(c *resourceapi.ResourceClaim) {
 					c.Status.Allocation = &resourceapi.AllocationResult{}
 					c.Status.Allocation.Devices.Config = append(
