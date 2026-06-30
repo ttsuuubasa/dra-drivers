@@ -385,12 +385,16 @@ func TestCollectImageConfigs(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			configs, err := collectImageConfigs([]*resourceapi.ResourceClaim{tc.claim})
-			if err != nil {
-				if tc.errMsg == "" || !strings.Contains(err.Error(), tc.errMsg) {
-					t.Fatalf("unexpected collectImageConfigs() error = %v", err)
+			if len(tc.errMsg) > 0 {
+				if err == nil || !strings.Contains(err.Error(), tc.errMsg) {
+					t.Fatalf("expected error %v, got %v", tc.errMsg, err)
 				}
 				if !tc.wantRequeue && !errors.Is(err, reconcile.TerminalError(nil)) {
 					t.Fatalf("expected TerminalError, got %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("collectImageConfigs failed: %v", err)
 				}
 			}
 			if len(configs) != tc.wantLen {
