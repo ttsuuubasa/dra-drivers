@@ -16,6 +16,7 @@ import (
 	imagev1alpha1 "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/api/v1alpha1"
 )
 
+const DriverName = "image-configurator.x-k8s.io"
 const BindingConditionUpdateImage = "image-configurator.x-k8s.io/image-updated"
 const BindingFailureConditionUpdateImage = "image-configurator.x-k8s.io/image-update-failed"
 
@@ -66,7 +67,7 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 		return reconcile.Result{}, err
 	}
 	if len(imageConfigs) == 0 {
-		return reconcile.Result{}, nil
+		return reconcile.Result{}, reconcile.TerminalError(fmt.Errorf("no ImageConfig found in claims for pod %s", req.NamespacedName))
 	}
 
 	if err := r.patchImages(ctx, &pod, imageConfigs); err != nil {
@@ -110,6 +111,9 @@ func collectPendingBindingResults(claims []*resourceapi.ResourceClaim) []claimBi
 	for _, claim := range claims {
 		var results []resourceapi.DeviceRequestAllocationResult
 		for _, result := range claim.Status.Allocation.Devices.Results {
+			if result.Driver != DriverName {
+				continue
+			}
 			if !slices.Contains(result.BindingConditions, BindingConditionUpdateImage) {
 				continue
 			}
