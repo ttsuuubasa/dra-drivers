@@ -324,6 +324,8 @@ func TestCollectImageConfigs(t *testing.T) {
 		wantLen           int
 		wantContainerName string
 		wantImage         string
+		wantRequeue       bool
+		errMsg            string
 	}{
 		{
 			name: "decodes valid ImageConfig and skips invalid/missing entries",
@@ -353,11 +355,50 @@ func TestCollectImageConfigs(t *testing.T) {
 			wantContainerName: "test-container",
 			wantImage:         "custom-image:v1",
 		},
+		{
+			name: "returns TerminalError in case of opaque parameter decode failure",
+			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
+				withImageConfig(t, ImageRef{
+					Source:        "test-source",
+					Driver:        "test-driver",
+					ContainerName: "test-container",
+					Image:         "custom-image:v1",
+				}),
+				func(c *resourceapi.ResourceClaim) {
+					c.Status.Allocation.Devices.Config = append(
+						c.Status.Allocation.Devices.Config,
+						resourceapi.DeviceAllocationConfiguration{
+							DeviceConfiguration: resourceapi.DeviceConfiguration{
+								Opaque: &resourceapi.OpaqueDeviceConfiguration{
+									Driver:     "test-driver",
+									Parameters: runtime.RawExtension{Raw: []byte("not-valid-json")},
+								},
+							},
+						},
+					)
+				},
+			),
+			wantLen:     0,
+			wantRequeue: false,
+			errMsg:      "Opaque parameter decode failure:",
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			configs := collectImageConfigs([]*resourceapi.ResourceClaim{tc.claim})
+			configs, err := collectImageConfigs([]*resourceapi.ResourceClaim{tc.claim})
+			if len(tc.errMsg) > 0 {
+				if err == nil || !strings.Contains(err.Error(), tc.errMsg) {
+					t.Fatalf("expected error %v, got %v", tc.errMsg, err)
+				}
+				if !tc.wantRequeue && !errors.Is(err, reconcile.TerminalError(nil)) {
+					t.Fatalf("expected TerminalError, got %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("collectImageConfigs failed: %v", err)
+				}
+			}
 			if len(configs) != tc.wantLen {
 				t.Fatalf("expected %d image config(s), got %d", tc.wantLen, len(configs))
 			}

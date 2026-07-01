@@ -61,7 +61,10 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 		return reconcile.Result{}, nil
 	}
 
-	imageConfigs := collectImageConfigs(claims)
+	imageConfigs, err := collectImageConfigs(claims)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
 	if len(imageConfigs) == 0 {
 		return reconcile.Result{}, nil
 	}
@@ -124,7 +127,7 @@ func collectPendingBindingResults(claims []*resourceapi.ResourceClaim) []claimBi
 
 // collectImageConfigs extracts all ImageConfig objects from the allocated device
 // configs across all claims.
-func collectImageConfigs(claims []*resourceapi.ResourceClaim) []*imagev1alpha1.ImageConfig {
+func collectImageConfigs(claims []*resourceapi.ResourceClaim) ([]*imagev1alpha1.ImageConfig, error) {
 	decoder := imagev1alpha1.Codec.UniversalDeserializer()
 	var imageConfigs []*imagev1alpha1.ImageConfig
 	for _, claim := range claims {
@@ -134,7 +137,7 @@ func collectImageConfigs(claims []*resourceapi.ResourceClaim) []*imagev1alpha1.I
 			}
 			obj, _, err := decoder.Decode(cfg.Opaque.Parameters.Raw, nil, nil)
 			if err != nil {
-				continue
+				return nil, reconcile.TerminalError(fmt.Errorf("Opaque parameter decode failure: %w", err))
 			}
 			ic, ok := obj.(*imagev1alpha1.ImageConfig)
 			if !ok || ic.ContainerName == "" || ic.Image == "" {
@@ -143,7 +146,7 @@ func collectImageConfigs(claims []*resourceapi.ResourceClaim) []*imagev1alpha1.I
 			imageConfigs = append(imageConfigs, ic)
 		}
 	}
-	return imageConfigs
+	return imageConfigs, nil
 }
 
 // isBindingConditionAlreadySet checks whether the given condition is already
