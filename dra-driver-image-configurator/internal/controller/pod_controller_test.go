@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	imagev1alpha1 "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/api/v1alpha1"
@@ -516,13 +517,14 @@ func TestPatchImages(t *testing.T) {
 	s := createTestScheme()
 
 	tests := []struct {
-		name           string
-		pod            *corev1.Pod
-		imageConfigs   []*imagev1alpha1.ImageConfig
-		wantImages     []string
-		wantInitImages []string
-		errMsg         string
-		wantRequeue    bool
+		name                string
+		pod                 *corev1.Pod
+		imageConfigs        []*imagev1alpha1.ImageConfig
+		wantImages          []string
+		wantInitImages      []string
+		errMsg              string
+		wantRequeue         bool
+		wantPodUpdateCalled bool
 	}{
 		{
 			name: "returns a TerminalError in case containerName from ImageConfig does not match any pod container",
@@ -548,9 +550,10 @@ func TestPatchImages(t *testing.T) {
 					Image:         "new-image:v1",
 				},
 			},
-			wantImages:  []string{"old-image:v1", "other-image:v1"},
-			errMsg:      "containerName non-matching-container in ImageConfig doesn't match any container in pod test-ns/test-pod",
-			wantRequeue: false,
+			wantImages:          []string{"old-image:v1", "other-image:v1"},
+			errMsg:              "containerName non-matching-container in ImageConfig doesn't match any container in pod test-ns/test-pod",
+			wantRequeue:         false,
+			wantPodUpdateCalled: false,
 		},
 		{
 			name: "patches container image and init container image according to ImageConfigs",
@@ -576,14 +579,45 @@ func TestPatchImages(t *testing.T) {
 					Image:         "new-init-image:v1",
 				},
 			},
-			wantImages:     []string{"new-image:v2"},
-			wantInitImages: []string{"new-init-image:v1"},
+			wantImages:          []string{"new-image:v2"},
+			wantInitImages:      []string{"new-init-image:v1"},
+			wantPodUpdateCalled: true,
+		},
+		{
+			name: "doesn't update images if they are already set to the desired value",
+			pod: newPod(NameRef{Name: "test-pod", Namespace: "test-ns"},
+				withContainer(ImageRef{ContainerName: "target-container", Image: "new-image:v2"}),
+			),
+			imageConfigs: []*imagev1alpha1.ImageConfig{
+				{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: imagev1alpha1.SchemeGroupVersion.String(),
+						Kind:       "ImageConfig",
+					},
+					ContainerName: "target-container",
+					Image:         "new-image:v2",
+				},
+			},
+			wantImages:          []string{"new-image:v2"},
+			wantPodUpdateCalled: false,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			fakeClient := fake.NewClientBuilder().WithScheme(s).WithObjects(tc.pod).Build()
+			podUpdateCalled := false
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(s).
+				WithObjects(tc.pod).
+				WithInterceptorFuncs(interceptor.Funcs{
+					Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+						if _, ok := obj.(*corev1.Pod); ok {
+							podUpdateCalled = true
+						}
+						return c.Update(ctx, obj, opts...)
+					},
+				}).
+				Build()
 			r := &PodReconciler{Client: fakeClient}
 
 			req := reconcile.Request{
@@ -607,7 +641,11 @@ func TestPatchImages(t *testing.T) {
 				}
 			}
 
-			// Verify pod images were updated as expected.
+			// Verify whether pod Update was called as expected.
+			if podUpdateCalled != tc.wantPodUpdateCalled {
+				t.Errorf("pod Update called = %v, expected %v", podUpdateCalled, tc.wantPodUpdateCalled)
+			}
+			// Get current state of the pod
 			updatedPod := &corev1.Pod{}
 			if err := fakeClient.Get(context.Background(), req.NamespacedName, updatedPod); err != nil {
 				t.Fatalf("failed to get updated pod: %v", err)
