@@ -755,7 +755,7 @@ func TestReconcile(t *testing.T) {
 					BindingConditions: []string{BindingConditionUpdateImage},
 				}),
 			),
-			errMsg:      "no ImageConfig found in claims for pod",
+			errMsg:      "no valid ImageConfig found in claims matching the pod containers",
 			wantRequeue: false,
 		},
 		{

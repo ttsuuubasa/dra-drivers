@@ -68,7 +68,7 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 		return reconcile.Result{}, err
 	}
 	if len(imageConfigs) == 0 {
-		return reconcile.Result{}, reconcile.TerminalError(fmt.Errorf("no ImageConfig found in claims for pod %s", req.NamespacedName))
+		return reconcile.Result{}, reconcile.TerminalError(fmt.Errorf("no valid ImageConfig found in claims matching the pod containers %s", req.NamespacedName))
 	}
 
 	if err := r.patchImages(ctx, &pod, imageConfigs); err != nil {
