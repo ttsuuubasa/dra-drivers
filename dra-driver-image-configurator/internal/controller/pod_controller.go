@@ -137,7 +137,7 @@ func collectImageConfigs(claims []*resourceapi.ResourceClaim) ([]*imagev1alpha1.
 			}
 			obj, _, err := decoder.Decode(cfg.Opaque.Parameters.Raw, nil, nil)
 			if err != nil {
-				return nil, reconcile.TerminalError(fmt.Errorf("Opaque parameter decode failure / unexpected type: %w", err))
+				return nil, reconcile.TerminalError(fmt.Errorf("Opaque parameter decode failure: %w", err))
 			}
 			ic, ok := obj.(*imagev1alpha1.ImageConfig)
 			if !ok || ic.ContainerName == "" || ic.Image == "" {

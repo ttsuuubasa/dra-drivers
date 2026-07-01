@@ -325,7 +325,7 @@ func TestCollectImageConfigs(t *testing.T) {
 		errMsg            string
 	}{
 		{
-			name: "returns TerminalError in case of opaque parameter decode failure or unexpected type",
+			name: "returns TerminalError in case of opaque parameter decode failure",
 			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
 				func(c *resourceapi.ResourceClaim) {
 					c.Status.Allocation = &resourceapi.AllocationResult{}
@@ -342,9 +342,8 @@ func TestCollectImageConfigs(t *testing.T) {
 					)
 				},
 			),
-			wantLen:     0,
-			wantRequeue: false,
-			errMsg:      "Opaque parameter decode failure / unexpected type:",
+			wantLen: 0,
+			errMsg:  "Opaque parameter decode failure:",
 		},
 		{
 			name: "decodes valid ImageConfig and skips invalid/missing entries",
