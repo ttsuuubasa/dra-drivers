@@ -500,6 +500,90 @@ func TestFetchClaims(t *testing.T) {
 	}
 }
 
+// ── patchImages ───────────────────────────────────────────────────────────────
+
+func TestPatchImages(t *testing.T) {
+	s := createTestScheme()
+
+	tests := []struct {
+		name         string
+		pod          *corev1.Pod
+		imageConfigs []*imagev1alpha1.ImageConfig
+		wantImages   []string
+		errMsg       string
+		wantRequeue  bool
+	}{
+		{
+			name: "returns a TerminalError in case containerName from ImageConfig does not match any pod container",
+			pod: newPod(NameRef{Name: "test-pod", Namespace: "test-ns"},
+				withContainer(ImageRef{ContainerName: "target-container", Image: "old-image:v1"}),
+				withContainer(ImageRef{ContainerName: "other-container", Image: "other-image:v1"}),
+			),
+			imageConfigs: []*imagev1alpha1.ImageConfig{
+				{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: imagev1alpha1.SchemeGroupVersion.String(),
+						Kind:       "ImageConfig",
+					},
+					ContainerName: "non-matching-container",
+					Image:         "new-image:v2",
+				},
+				{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: imagev1alpha1.SchemeGroupVersion.String(),
+						Kind:       "ImageConfig",
+					},
+					ContainerName: "target-container",
+					Image:         "new-image:v1",
+				},
+			},
+			wantImages:  []string{"old-image:v1", "other-image:v1"},
+			errMsg:      "containerName non-matching-container in ImageConfig doesn't match any container in pod test-ns/test-pod",
+			wantRequeue: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeClient := fake.NewClientBuilder().WithScheme(s).WithObjects(tc.pod).Build()
+			r := &PodReconciler{Client: fakeClient}
+
+			req := reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: tc.pod.Namespace,
+					Name:      tc.pod.Name,
+				},
+			}
+
+			err := r.patchImages(context.Background(), tc.pod, tc.imageConfigs)
+			if len(tc.errMsg) > 0 {
+				if err == nil || !strings.Contains(err.Error(), tc.errMsg) {
+					t.Fatalf("expected error %v, got %v", tc.errMsg, err)
+				}
+				if !tc.wantRequeue && !errors.Is(err, reconcile.TerminalError(nil)) {
+					t.Fatalf("expected TerminalError, got %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("Reconcile failed: %v", err)
+				}
+			}
+
+			// Verify pod images were updated as expected.
+			updatedPod := &corev1.Pod{}
+			if err := fakeClient.Get(context.Background(), req.NamespacedName, updatedPod); err != nil {
+				t.Fatalf("failed to get updated pod: %v", err)
+			}
+			// Verify the pod's container images
+			for i, container := range updatedPod.Spec.Containers {
+				if container.Image != tc.wantImages[i] {
+					t.Errorf("expected image %v, got %v", tc.wantImages[i], container.Image)
+				}
+			}
+		})
+	}
+}
+
 // ── Reconcile ─────────────────────────────────────────────────────────────────
 
 func TestReconcile(t *testing.T) {
