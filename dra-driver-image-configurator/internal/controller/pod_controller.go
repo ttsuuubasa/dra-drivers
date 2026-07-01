@@ -174,6 +174,12 @@ func isBindingConditionAlreadySet(claim *resourceapi.ResourceClaim, result *reso
 func (r *PodReconciler) patchImages(ctx context.Context, pod *corev1.Pod, imageConfigs []*imagev1alpha1.ImageConfig) error {
 	containerMatched := false
 	for _, ic := range imageConfigs {
+		for i := range pod.Spec.InitContainers {
+			if pod.Spec.InitContainers[i].Name == ic.ContainerName {
+				containerMatched = true
+				pod.Spec.InitContainers[i].Image = ic.Image
+			}
+		}
 		for i := range pod.Spec.Containers {
 			if pod.Spec.Containers[i].Name == ic.ContainerName {
 				containerMatched = true
