@@ -3,6 +3,8 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -319,7 +321,30 @@ func TestCollectImageConfigs(t *testing.T) {
 		wantLen           int
 		wantContainerName string
 		wantImage         string
+		wantRequeue       bool
+		errMsg            string
 	}{
+		{
+			name: "returns TerminalError in case of opaque parameter decode failure",
+			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
+				func(c *resourceapi.ResourceClaim) {
+					c.Status.Allocation = &resourceapi.AllocationResult{}
+					c.Status.Allocation.Devices.Config = append(
+						c.Status.Allocation.Devices.Config,
+						resourceapi.DeviceAllocationConfiguration{
+							DeviceConfiguration: resourceapi.DeviceConfiguration{
+								Opaque: &resourceapi.OpaqueDeviceConfiguration{
+									Driver:     "test-driver",
+									Parameters: runtime.RawExtension{Raw: []byte("not-valid-json")},
+								},
+							},
+						},
+					)
+				},
+			),
+			wantLen: 0,
+			errMsg:  "Opaque parameter decode failure:",
+		},
 		{
 			name: "decodes valid ImageConfig and skips invalid/missing entries",
 			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
@@ -352,7 +377,19 @@ func TestCollectImageConfigs(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			configs := collectImageConfigs([]*resourceapi.ResourceClaim{tc.claim})
+			configs, err := collectImageConfigs([]*resourceapi.ResourceClaim{tc.claim})
+			if len(tc.errMsg) > 0 {
+				if err == nil || !strings.Contains(err.Error(), tc.errMsg) {
+					t.Fatalf("expected error %v, got %v", tc.errMsg, err)
+				}
+				if !tc.wantRequeue && !errors.Is(err, reconcile.TerminalError(nil)) {
+					t.Fatalf("expected TerminalError, got %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("collectImageConfigs failed: %v", err)
+				}
+			}
 			if len(configs) != tc.wantLen {
 				t.Fatalf("expected %d image config(s), got %d", tc.wantLen, len(configs))
 			}
