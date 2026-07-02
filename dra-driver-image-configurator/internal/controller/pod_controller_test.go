@@ -329,14 +329,14 @@ func TestCollectImageConfigs(t *testing.T) {
 			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
 				withImageConfig(t, ImageRef{
 					Source:        "test-source",
-					Driver:        "test-driver",
+					Driver:        DriverName,
 					ContainerName: "test-container",
 					Image:         "custom-image:v1",
 				}),
 				// Invalid/incomplete config (empty ContainerName).
 				withImageConfig(t, ImageRef{
 					Source:        "invalid-source",
-					Driver:        "test-driver",
+					Driver:        DriverName,
 					ContainerName: "",
 					Image:         "custom-image:v1",
 				}),
@@ -357,7 +357,7 @@ func TestCollectImageConfigs(t *testing.T) {
 			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
 				withImageConfig(t, ImageRef{
 					Source:        "test-source",
-					Driver:        "test-driver",
+					Driver:        DriverName,
 					ContainerName: "test-container",
 					Image:         "custom-image:v1",
 				}),
@@ -367,7 +367,7 @@ func TestCollectImageConfigs(t *testing.T) {
 						resourceapi.DeviceAllocationConfiguration{
 							DeviceConfiguration: resourceapi.DeviceConfiguration{
 								Opaque: &resourceapi.OpaqueDeviceConfiguration{
-									Driver:     "test-driver",
+									Driver:     DriverName,
 									Parameters: runtime.RawExtension{Raw: []byte("not-valid-json")},
 								},
 							},
@@ -378,6 +378,35 @@ func TestCollectImageConfigs(t *testing.T) {
 			wantLen:     0,
 			wantRequeue: false,
 			errMsg:      "Opaque parameter decode failure:",
+		},
+		{
+			name: "skips opaque config targeting another driver",
+			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
+				withImageConfig(t, ImageRef{
+					Source:        "test-source",
+					Driver:        DriverName,
+					ContainerName: "test-container",
+					Image:         "custom-image:v1",
+				}),
+				// Config for a different driver: must be ignored, even if its
+				// payload is not decodable by this controller.
+				func(c *resourceapi.ResourceClaim) {
+					c.Status.Allocation.Devices.Config = append(
+						c.Status.Allocation.Devices.Config,
+						resourceapi.DeviceAllocationConfiguration{
+							DeviceConfiguration: resourceapi.DeviceConfiguration{
+								Opaque: &resourceapi.OpaqueDeviceConfiguration{
+									Driver:     "other.example.com",
+									Parameters: runtime.RawExtension{Raw: []byte("not-valid-json")},
+								},
+							},
+						},
+					)
+				},
+			),
+			wantLen:           1,
+			wantContainerName: "test-container",
+			wantImage:         "custom-image:v1",
 		},
 	}
 
@@ -491,6 +520,7 @@ func TestReconcile(t *testing.T) {
 			),
 			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
 				withImageConfig(t, ImageRef{
+					Driver:        DriverName,
 					ContainerName: "target-container",
 					Image:         "new-image:v2",
 				}),
@@ -536,6 +566,7 @@ func TestReconcile(t *testing.T) {
 			),
 			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
 				withImageConfig(t, ImageRef{
+					Driver:        DriverName,
 					ContainerName: "target-container",
 					Image:         "new-image:v2",
 				}),

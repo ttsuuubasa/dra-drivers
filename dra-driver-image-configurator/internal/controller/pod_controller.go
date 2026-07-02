@@ -19,6 +19,8 @@ import (
 const BindingConditionUpdateImage = "image-configurator.x-k8s.io/image-updated"
 const BindingFailureConditionUpdateImage = "image-configurator.x-k8s.io/image-update-failed"
 
+const DriverName = "image-configurator.x-k8s.io"
+
 // PodReconciler watches Pods nominated to a node and patches their
 // container images based on the associated ResourceClaim config.
 type PodReconciler struct {
@@ -126,13 +128,18 @@ func collectPendingBindingResults(claims []*resourceapi.ResourceClaim) []claimBi
 }
 
 // collectImageConfigs extracts all ImageConfig objects from the allocated device
-// configs across all claims.
+// configs across all claims. Configs whose Opaque.Driver targets a different
+// driver are skipped so that a ResourceClaim may carry configs for multiple
+// drivers.
 func collectImageConfigs(claims []*resourceapi.ResourceClaim) ([]*imagev1alpha1.ImageConfig, error) {
 	decoder := imagev1alpha1.Codec.UniversalDeserializer()
 	var imageConfigs []*imagev1alpha1.ImageConfig
 	for _, claim := range claims {
 		for _, cfg := range claim.Status.Allocation.Devices.Config {
-			if cfg.Opaque == nil || cfg.Opaque.Parameters.Raw == nil {
+			if cfg.Opaque == nil || cfg.Opaque.Driver != DriverName {
+				continue
+			}
+			if cfg.Opaque.Parameters.Raw == nil {
 				continue
 			}
 			obj, _, err := decoder.Decode(cfg.Opaque.Parameters.Raw, nil, nil)
