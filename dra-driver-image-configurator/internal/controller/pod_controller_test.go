@@ -196,12 +196,12 @@ func TestIsBindingConditionAlreadySet(t *testing.T) {
 			name: "expected condition to be already set",
 			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
 				withDeviceCondition(
-					DeviceRef{Driver: "test-driver", Pool: "test-pool", Device: "test-device"},
+					DeviceRef{Driver: DriverName, Pool: "test-pool", Device: "test-device"},
 					BindingConditionUpdateImage, metav1.ConditionTrue,
 				),
 			),
 			result: &resourceapi.DeviceRequestAllocationResult{
-				Driver: "test-driver", Pool: "test-pool", Device: "test-device",
+				Driver: DriverName, Pool: "test-pool", Device: "test-device",
 			},
 			condition: BindingConditionUpdateImage,
 			want:      true,
@@ -210,12 +210,12 @@ func TestIsBindingConditionAlreadySet(t *testing.T) {
 			name: "Test non-matching condition status",
 			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
 				withDeviceCondition(
-					DeviceRef{Driver: "test-driver", Pool: "test-pool", Device: "test-device"},
+					DeviceRef{Driver: DriverName, Pool: "test-pool", Device: "test-device"},
 					BindingConditionUpdateImage, metav1.ConditionFalse,
 				),
 			),
 			result: &resourceapi.DeviceRequestAllocationResult{
-				Driver: "test-driver", Pool: "test-pool", Device: "test-device",
+				Driver: DriverName, Pool: "test-pool", Device: "test-device",
 			},
 			condition: BindingConditionUpdateImage,
 			want:      false,
@@ -224,12 +224,12 @@ func TestIsBindingConditionAlreadySet(t *testing.T) {
 			name: "Test non-matching device",
 			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
 				withDeviceCondition(
-					DeviceRef{Driver: "test-driver", Pool: "test-pool", Device: "test-device"},
+					DeviceRef{Driver: DriverName, Pool: "test-pool", Device: "test-device"},
 					BindingConditionUpdateImage, metav1.ConditionTrue,
 				),
 			),
 			result: &resourceapi.DeviceRequestAllocationResult{
-				Driver: "test-driver", Pool: "test-pool", Device: "other-device",
+				Driver: DriverName, Pool: "test-pool", Device: "other-device",
 			},
 			condition: BindingConditionUpdateImage,
 			want:      false,
@@ -238,7 +238,7 @@ func TestIsBindingConditionAlreadySet(t *testing.T) {
 			name:  "Test empty devices list",
 			claim: &resourceapi.ResourceClaim{},
 			result: &resourceapi.DeviceRequestAllocationResult{
-				Driver: "test-driver", Pool: "test-pool", Device: "test-device",
+				Driver: DriverName, Pool: "test-pool", Device: "test-device",
 			},
 			condition: BindingConditionUpdateImage,
 			want:      false,
@@ -273,22 +273,22 @@ func TestCollectPendingBindingResults(t *testing.T) {
 				// claim-1: one device requires the binding condition (pending), another has no condition.
 				newClaim(NameRef{Name: "claim-1", Namespace: "default"},
 					withResult(DeviceRef{
-						Request: "req-1", Driver: "test-driver", Pool: "test-pool", Device: "dev-1",
+						Request: "req-1", Driver: DriverName, Pool: "test-pool", Device: "dev-1",
 						ShareID:           &shareID,
 						BindingConditions: []string{BindingConditionUpdateImage},
 					}),
 					withResult(DeviceRef{
-						Request: "req-other", Driver: "test-driver", Pool: "test-pool", Device: "dev-other",
+						Request: "req-other", Driver: DriverName, Pool: "test-pool", Device: "dev-other",
 					}),
 				),
 				// claim-2: condition is required but already set to True.
 				newClaim(NameRef{Name: "claim-2", Namespace: "default"},
 					withResult(DeviceRef{
-						Request: "req-2", Driver: "test-driver", Pool: "test-pool", Device: "dev-2",
+						Request: "req-2", Driver: DriverName, Pool: "test-pool", Device: "dev-2",
 						BindingConditions: []string{BindingConditionUpdateImage},
 					}),
 					withDeviceCondition(
-						DeviceRef{Driver: "test-driver", Pool: "test-pool", Device: "dev-2"},
+						DeviceRef{Driver: DriverName, Pool: "test-pool", Device: "dev-2"},
 						BindingConditionUpdateImage, metav1.ConditionTrue,
 					),
 				),
@@ -346,7 +346,7 @@ func TestCollectImageConfigs(t *testing.T) {
 							resourceapi.DeviceAllocationConfiguration{
 								DeviceConfiguration: resourceapi.DeviceConfiguration{
 									Opaque: &resourceapi.OpaqueDeviceConfiguration{
-										Driver:     "test-driver",
+										Driver:     DriverName,
 										Parameters: runtime.RawExtension{Raw: []byte("not-valid-json")},
 									},
 								},
@@ -364,7 +364,7 @@ func TestCollectImageConfigs(t *testing.T) {
 				newClaim(NameRef{Name: "c", Namespace: "default"},
 					withImageConfig(t, ImageRef{
 						Source:        "test-source",
-						Driver:        "test-driver",
+						Driver:        DriverName,
 						ContainerName: "test-container",
 						Image:         "custom-image:v1",
 					}),
@@ -387,7 +387,7 @@ func TestCollectImageConfigs(t *testing.T) {
 				newClaim(NameRef{Name: "c", Namespace: "default"},
 					withImageConfig(t, ImageRef{
 						Source:        "invalid-source",
-						Driver:        "test-driver",
+						Driver:        DriverName,
 						ContainerName: "",
 						Image:         "custom-image:v1",
 					}),
@@ -403,7 +403,7 @@ func TestCollectImageConfigs(t *testing.T) {
 				newClaim(NameRef{Name: "c", Namespace: "default"},
 					withImageConfig(t, ImageRef{
 						Source:        "test-source",
-						Driver:        "test-driver",
+						Driver:        DriverName,
 						ContainerName: "test-container",
 						Image:         "custom-image:v1",
 					}),
@@ -411,7 +411,7 @@ func TestCollectImageConfigs(t *testing.T) {
 				newClaim(NameRef{Name: "c", Namespace: "default"},
 					withImageConfig(t, ImageRef{
 						Source:        "test-source",
-						Driver:        "test-driver",
+						Driver:        DriverName,
 						ContainerName: "test-container",
 						Image:         "custom-image:v2",
 					}),
@@ -678,6 +678,8 @@ func TestReconcile(t *testing.T) {
 		claim            *resourceapi.ResourceClaim
 		wantImages       []string
 		wantConditionTyp string
+		errMsg           string
+		wantRequeue      bool
 	}{
 		{
 			name: "patches container image and sets binding condition",
@@ -692,7 +694,7 @@ func TestReconcile(t *testing.T) {
 					Image:         "new-image:v2",
 				}),
 				withResult(DeviceRef{
-					Driver: "test-driver", Pool: "test-pool", Device: "test-device",
+					Driver: DriverName, Pool: "test-pool", Device: "test-device",
 					BindingConditions: []string{BindingConditionUpdateImage},
 				}),
 			),
@@ -700,19 +702,21 @@ func TestReconcile(t *testing.T) {
 			wantConditionTyp: BindingConditionUpdateImage,
 		},
 		{
-			name: "nothing happens if claim has no pending binding results",
+			name: "returns an error and reconcile stops in case of no image configs",
 			pod: newPod(NameRef{Name: "pod-no-configs", Namespace: "test-ns"},
 				withClaimRef(claimName),
 			),
 			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
 				withResult(DeviceRef{
-					Driver:            "test-driver",
+					Driver:            DriverName,
 					BindingConditions: []string{BindingConditionUpdateImage},
 				}),
 			),
+			errMsg:      "no valid ImageConfig found in claims matching the pod containers",
+			wantRequeue: false,
 		},
 		{
-			name: "nothing happens if claim has no ImageConfig",
+			name: "nothing happens if claim has no pending binding results",
 			pod: newPod(NameRef{Name: "pod-no-image-config", Namespace: "test-ns"},
 				withClaimRef(claimName),
 			),
@@ -737,10 +741,31 @@ func TestReconcile(t *testing.T) {
 					Image:         "new-image:v2",
 				}),
 				withResult(DeviceRef{
-					Driver:            "test-driver",
+					Driver:            DriverName,
 					Pool:              "test-pool",
 					Device:            "test-device",
 					BindingConditions: []string{BindingConditionUpdateImage},
+				}),
+			),
+			wantImages: []string{"old-image:v1"},
+		},
+		{
+			name: "nothing happens if claims result has different driver",
+			pod: newPod(NameRef{Name: "pod-no-image-config", Namespace: "test-ns"},
+				withContainer(ImageRef{ContainerName: "target-container", Image: "old-image:v1"}),
+				withClaimRef(claimName),
+			),
+			//only Claim with different driver is present so it should be ignored
+			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
+				withImageConfig(t, ImageRef{
+					ContainerName: "target-container",
+					Image:         "new-image:v2",
+				}),
+				withResult(DeviceRef{
+					Driver:            "other-driver",
+					Pool:              "test-pool",
+					Device:            "test-device",
+					BindingConditions: []string{"other-binding-condition"},
 				}),
 			),
 			wantImages: []string{"old-image:v1"},
@@ -765,11 +790,26 @@ func TestReconcile(t *testing.T) {
 
 			// Run Reconcile
 			res, err := reconciler.Reconcile(context.Background(), req)
-			if err != nil {
-				t.Fatalf("Reconcile failed: %v", err)
+			if len(tc.errMsg) > 0 {
+				if err == nil || !strings.Contains(err.Error(), tc.errMsg) {
+					t.Fatalf("expected error %v, got %v", tc.errMsg, err)
+				}
+				if !tc.wantRequeue && !errors.Is(err, reconcile.TerminalError(nil)) {
+					t.Fatalf("expected TerminalError, got %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("Reconcile failed: %v", err)
+				}
 			}
-			if res.Requeue {
-				t.Errorf("unexpected Requeue")
+			if tc.wantRequeue {
+				if !res.Requeue {
+					t.Errorf("expected Requeue, got none")
+				}
+			} else {
+				if res.Requeue {
+					t.Errorf("unexpected Requeue")
+				}
 			}
 
 			// Verify pod images were updated as expected.
