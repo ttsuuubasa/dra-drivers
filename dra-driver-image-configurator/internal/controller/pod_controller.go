@@ -183,12 +183,36 @@ func isBindingConditionAlreadySet(claim *resourceapi.ResourceClaim, result *reso
 
 // patchImages updates container images on the pod according to the provided ImageConfigs.
 func (r *PodReconciler) patchImages(ctx context.Context, pod *corev1.Pod, imageConfigs []*imagev1alpha1.ImageConfig) error {
-	for i := range pod.Spec.Containers {
-		for _, ic := range imageConfigs {
-			if pod.Spec.Containers[i].Name == ic.ContainerName {
-				pod.Spec.Containers[i].Image = ic.Image
+	needsUpdate := false
+	for _, ic := range imageConfigs {
+		matched := false
+		// apply overwrites the image of any container whose name matches ic.ContainerName.
+		// It updates `matched` when a container name matches, and `needsUpdate` only when
+		// the image actually differs, so we skip a no-op Pod update.
+		apply := func(containers []corev1.Container) {
+			for i := range containers {
+				if containers[i].Name != ic.ContainerName {
+					continue
+				}
+				matched = true
+				if containers[i].Image == ic.Image {
+					continue
+				}
+				containers[i].Image = ic.Image
+				needsUpdate = true
 			}
 		}
+		// InitContainers
+		apply(pod.Spec.InitContainers)
+		// Containers
+		apply(pod.Spec.Containers)
+
+		if !matched {
+			return reconcile.TerminalError(fmt.Errorf("containerName %s in ImageConfig doesn't match any container in pod %s/%s", ic.ContainerName, pod.Namespace, pod.Name))
+		}
+	}
+	if !needsUpdate {
+		return nil
 	}
 	if err := r.Client.Update(ctx, pod); err != nil {
 		return fmt.Errorf("update pod %s/%s: %w", pod.Namespace, pod.Name, err)
