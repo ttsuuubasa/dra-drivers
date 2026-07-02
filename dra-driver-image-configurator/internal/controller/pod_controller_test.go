@@ -394,7 +394,7 @@ func TestCollectImageConfigs(t *testing.T) {
 				),
 			},
 			wantLen:     0,
-			errMsg:      "ContainerName or Image empty:",
+			errMsg:      "ContainerName or Image empty",
 			wantRequeue: false,
 		},
 		{
@@ -419,6 +419,22 @@ func TestCollectImageConfigs(t *testing.T) {
 			},
 			wantLen:     0,
 			errMsg:      "conflicting ImageConfigs for container",
+			wantRequeue: false,
+		},
+		{
+			name: "returns TerminalError in case of syntactically incorrect image reference",
+			claims: []*resourceapi.ResourceClaim{
+				newClaim(NameRef{Name: "c", Namespace: "default"},
+					withImageConfig(t, ImageRef{
+						Source:        "invalid-source",
+						Driver:        "test-driver",
+						ContainerName: "test-container",
+						Image:         "custom-image: v1",
+					}),
+				),
+			},
+			wantLen:     0,
+			errMsg:      "invalid image reference",
 			wantRequeue: false,
 		},
 	}
