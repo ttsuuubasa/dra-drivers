@@ -148,7 +148,7 @@ func collectImageConfigs(claims []*resourceapi.ResourceClaim) ([]*imagev1alpha1.
 			}
 			ic, ok := obj.(*imagev1alpha1.ImageConfig)
 			if !ok || ic.ContainerName == "" || ic.Image == "" {
-				continue
+				return nil, reconcile.TerminalError(fmt.Errorf("ContainerName or Image empty"))
 			}
 			imageConfigs = append(imageConfigs, ic)
 		}
