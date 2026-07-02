@@ -328,19 +328,12 @@ func TestCollectImageConfigs(t *testing.T) {
 		errMsg            string
 	}{
 		{
-			name: "decodes valid ImageConfig and skips invalid/missing entries",
+			name: "decodes valid ImageConfig and skips missing entries",
 			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
 				withImageConfig(t, ImageRef{
 					Source:        "test-source",
 					Driver:        DriverName,
 					ContainerName: "test-container",
-					Image:         "custom-image:v1",
-				}),
-				// Invalid/incomplete config (empty ContainerName).
-				withImageConfig(t, ImageRef{
-					Source:        "invalid-source",
-					Driver:        DriverName,
-					ContainerName: "",
 					Image:         "custom-image:v1",
 				}),
 				// Missing opaque.
@@ -410,6 +403,20 @@ func TestCollectImageConfigs(t *testing.T) {
 			wantLen:           1,
 			wantContainerName: "test-container",
 			wantImage:         "custom-image:v1",
+		},
+		{
+			name: "returns TerminalError in case of missing ContainerName or Image in ImageConfig",
+			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
+				withImageConfig(t, ImageRef{
+					Source:        "invalid-source",
+					Driver:        "test-driver",
+					ContainerName: "",
+					Image:         "custom-image:v1",
+				}),
+			),
+			wantLen:     0,
+			wantRequeue: false,
+			errMsg:      "ContainerName or Image empty",
 		},
 	}
 
