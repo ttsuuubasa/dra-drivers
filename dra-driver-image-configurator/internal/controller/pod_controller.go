@@ -2,8 +2,10 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
@@ -18,6 +20,10 @@ import (
 
 const BindingConditionUpdateImage = "image-configurator.x-k8s.io/image-updated"
 const BindingFailureConditionUpdateImage = "image-configurator.x-k8s.io/image-update-failed"
+
+const claimNotAllocatedRequeueAfter = 20 * time.Millisecond
+
+var errClaimNotAllocated = errors.New("resource claim not yet allocated")
 
 // PodReconciler watches Pods nominated to a node and patches their
 // container images based on the associated ResourceClaim config.
@@ -53,6 +59,9 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 
 	claims, err := r.fetchClaims(ctx, &pod)
 	if err != nil {
+		if errors.Is(err, errClaimNotAllocated) {
+			return reconcile.Result{RequeueAfter: claimNotAllocatedRequeueAfter}, nil
+		}
 		return reconcile.Result{}, err
 	}
 
@@ -96,7 +105,7 @@ func (r *PodReconciler) fetchClaims(ctx context.Context, pod *corev1.Pod) ([]*re
 			return nil, fmt.Errorf("get claim %s: %w", claimKey, err)
 		}
 		if claim.Status.Allocation == nil {
-			return nil, fmt.Errorf("claim %s not yet allocated", claimKey)
+			return nil, fmt.Errorf("claim %s: %w", claimKey, errClaimNotAllocated)
 		}
 		claims = append(claims, claim)
 	}
