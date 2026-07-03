@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"github.com/distribution/reference"
 	imagev1alpha1 "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/api/v1alpha1"
 )
 
@@ -142,7 +143,10 @@ func collectImageConfigs(claims []*resourceapi.ResourceClaim) ([]*imagev1alpha1.
 			}
 			ic, ok := obj.(*imagev1alpha1.ImageConfig)
 			if !ok || ic.ContainerName == "" || ic.Image == "" {
-				return nil, reconcile.TerminalError(fmt.Errorf("ContainerName or Image empty: %w", err))
+				return nil, reconcile.TerminalError(fmt.Errorf("ContainerName or Image empty"))
+			}
+			if _, err := reference.ParseNormalizedNamed(ic.Image); err != nil {
+				return nil, reconcile.TerminalError(fmt.Errorf("invalid image reference %q in claim %s/%s: %w", ic.Image, claim.Namespace, claim.Name, err))
 			}
 			if image, conflict := imageMap[ic.ContainerName]; conflict && image != ic.Image {
 				return nil, reconcile.TerminalError(fmt.Errorf("conflicting ImageConfigs for container %q: %q vs %q", ic.ContainerName, image, ic.Image))
