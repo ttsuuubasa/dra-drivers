@@ -3,15 +3,20 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	imagev1alpha1 "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/api/v1alpha1"
@@ -594,5 +599,104 @@ func TestReconcile_PodNotFound(t *testing.T) {
 	}
 	if res.Requeue {
 		t.Errorf("unexpected Requeue")
+	}
+}
+
+func TestReconcile_APIErrors(t *testing.T) {
+	s := createTestScheme()
+	claimName := "reconcile-claim"
+	pod := newPod(NameRef{Name: "reconcile-pod", Namespace: "test-ns"},
+		withContainer(ImageRef{ContainerName: "target-container", Image: "old-image:v1"}),
+		withClaimRef(claimName),
+	)
+	claim := newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
+		withImageConfig(t, ImageRef{
+			ContainerName: "target-container",
+			Image:         "new-image:v2",
+		}),
+		withResult(DeviceRef{
+			Driver: "test-driver", Pool: "test-pool", Device: "test-device",
+			BindingConditions: []string{BindingConditionUpdateImage},
+		}),
+	)
+
+	tests := []struct {
+		name            string
+		interceptorFunc interceptor.Funcs
+		errMsg          string
+	}{
+		{
+			name: "returns error and requeues on API error while fetching pod",
+			interceptorFunc: interceptor.Funcs{
+				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					if _, ok := obj.(*corev1.Pod); ok {
+						return apierrors.NewServiceUnavailable("simulated API server unavailable when fetching pod")
+					}
+					return c.Get(ctx, key, obj, opts...)
+				},
+			},
+			errMsg: "simulated API server unavailable when fetching pod",
+		},
+		{
+			name: "returns error and requeues on API error while fetching claim",
+			interceptorFunc: interceptor.Funcs{
+				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					if _, ok := obj.(*resourceapi.ResourceClaim); ok {
+						return apierrors.NewServiceUnavailable("simulated API server unavailable when fetching claim")
+					}
+					return c.Get(ctx, key, obj, opts...)
+				},
+			},
+			errMsg: "simulated API server unavailable when fetching claim",
+		},
+		{
+			name: "returns error and requeues on API error while updating Pod with new image",
+			interceptorFunc: interceptor.Funcs{
+				Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+					if _, ok := obj.(*corev1.Pod); ok {
+						return apierrors.NewForbidden(corev1.Resource("pods"), "test-pod", fmt.Errorf("updating Pod with new image forbidden"))
+					}
+					return c.Update(ctx, obj, opts...)
+				},
+			},
+			errMsg: "updating Pod with new image forbidden",
+		},
+		{
+			name: "returns error and requeues on API error while updating claim status with binding condition",
+			interceptorFunc: interceptor.Funcs{
+				SubResourceUpdate: func(ctx context.Context, c client.Client, subResourceName string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+					if _, ok := obj.(*resourceapi.ResourceClaim); ok {
+						return apierrors.NewConflict(resourceapi.Resource("resourceclaims"), "test-claim", fmt.Errorf("resource version mismatch when updating claim status with binding condition"))
+					}
+					return c.SubResource(subResourceName).Update(ctx, obj, opts...)
+				},
+			},
+			errMsg: "resource version mismatch when updating claim status with binding condition",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(s).
+				WithObjects(pod, claim).
+				WithStatusSubresource(&resourceapi.ResourceClaim{}).
+				WithInterceptorFuncs(tc.interceptorFunc).
+				Build()
+			reconciler := &PodReconciler{Client: fakeClient}
+
+			req := reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: pod.Namespace,
+					Name:      pod.Name,
+				},
+			}
+			_, err := reconciler.Reconcile(context.Background(), req)
+			if err == nil || errors.Is(err, reconcile.TerminalError(nil)) {
+				t.Fatalf("expected regular error containing %q, got %v", tc.errMsg, err)
+			}
+			if !strings.Contains(err.Error(), tc.errMsg) {
+				t.Errorf("expected error to contain %q, got %q", tc.errMsg, err.Error())
+			}
+		})
 	}
 }
