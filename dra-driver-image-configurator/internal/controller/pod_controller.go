@@ -82,11 +82,27 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 
 // fetchClaims returns all ResourceClaims referenced by the pod.
 func (r *PodReconciler) fetchClaims(ctx context.Context, pod *corev1.Pod) ([]*resourceapi.ResourceClaim, error) {
-	var claims []*resourceapi.ResourceClaim
+	var claimNames []string
+	// Template-generated claims are surfaced by kubelet in Status.ResourceClaimStatuses.
 	for _, rcs := range pod.Status.ResourceClaimStatuses {
+		if rcs.ResourceClaimName == nil {
+			continue
+		}
+		claimNames = append(claimNames, *rcs.ResourceClaimName)
+	}
+	// Static claims are referenced directly from Spec.ResourceClaims.
+	for _, rc := range pod.Spec.ResourceClaims {
+		if rc.ResourceClaimName == nil {
+			continue
+		}
+		claimNames = append(claimNames, *rc.ResourceClaimName)
+	}
+
+	var claims []*resourceapi.ResourceClaim
+	for _, name := range claimNames {
 		claimKey := types.NamespacedName{
 			Namespace: pod.Namespace,
-			Name:      *rcs.ResourceClaimName,
+			Name:      name,
 		}
 		claim := &resourceapi.ResourceClaim{}
 		if err := r.Client.Get(ctx, claimKey, claim); err != nil {
