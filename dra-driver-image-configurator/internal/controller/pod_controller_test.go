@@ -450,6 +450,22 @@ func TestCollectImageConfigs(t *testing.T) {
 			wantRequeue: false,
 			errMsg:      "conflicting ImageConfigs for container",
 		},
+		{
+			name: "returns TerminalError in case of syntactically incorrect image reference",
+			claims: []*resourceapi.ResourceClaim{
+				newClaim(NameRef{Name: "c", Namespace: "default"},
+					withImageConfig(t, ImageRef{
+						Source:        "invalid-source",
+						Driver:        DriverName,
+						ContainerName: "test-container",
+						Image:         "custom-image: v1",
+					}),
+				),
+			},
+			wantLen:     0,
+			wantRequeue: false,
+			errMsg:      "invalid image reference",
+		},
 	}
 
 	for _, tc := range tests {
