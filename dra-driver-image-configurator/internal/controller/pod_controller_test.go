@@ -171,13 +171,24 @@ func withInitContainer(ref ImageRef) podOption {
 	}
 }
 
-// withClaimRef adds a PodResourceClaimStatus referencing the given claim.
-func withClaimRef(claimName string) podOption {
+// withGeneratedClaimRef adds a PodResourceClaimStatus referencing the given claim.
+func withGeneratedClaimRef(claimName string) podOption {
 	name := claimName
 	return func(p *corev1.Pod) {
 		p.Status.ResourceClaimStatuses = append(
 			p.Status.ResourceClaimStatuses,
 			corev1.PodResourceClaimStatus{Name: "ref", ResourceClaimName: &name},
+		)
+	}
+}
+
+// withStaticClaimRef adds a PodResourceClaim referencing the given claim.
+func withStaticClaimRef(claimName string) podOption {
+	name := claimName
+	return func(p *corev1.Pod) {
+		p.Spec.ResourceClaims = append(
+			p.Spec.ResourceClaims,
+			corev1.PodResourceClaim{Name: "ref", ResourceClaimName: &name},
 		)
 	}
 }
@@ -475,16 +486,28 @@ func TestFetchClaims(t *testing.T) {
 	s := createTestScheme()
 	claimName := "test-claim"
 
-	pod := newPod(NameRef{Name: "test-pod", Namespace: "default"}, withClaimRef(claimName))
+	pod := newPod(NameRef{Name: "test-pod", Namespace: "default"}, withGeneratedClaimRef(claimName))
 
 	tests := []struct {
 		name    string
+		pod     *corev1.Pod
 		claims  []client.Object
 		wantLen int
 		wantErr bool
 	}{
 		{
-			name: "fetches allocated claim referenced by pod",
+			name: "fetches generated allocated claim referenced by pod",
+			pod:  newPod(NameRef{Name: "test-pod", Namespace: "default"}, withGeneratedClaimRef(claimName)),
+			claims: []client.Object{
+				newClaim(NameRef{Name: claimName, Namespace: "default"}, func(c *resourceapi.ResourceClaim) {
+					c.Status.Allocation = &resourceapi.AllocationResult{}
+				}),
+			},
+			wantLen: 1,
+		},
+		{
+			name: "fetches static allocated claim referenced by pod",
+			pod:  newPod(NameRef{Name: "test-pod", Namespace: "default"}, withStaticClaimRef(claimName)),
 			claims: []client.Object{
 				newClaim(NameRef{Name: claimName, Namespace: "default"}, func(c *resourceapi.ResourceClaim) {
 					c.Status.Allocation = &resourceapi.AllocationResult{}
@@ -494,11 +517,13 @@ func TestFetchClaims(t *testing.T) {
 		},
 		{
 			name:    "Test claim not found",
+			pod:     newPod(NameRef{Name: "test-pod", Namespace: "default"}, withGeneratedClaimRef(claimName)),
 			claims:  nil,
 			wantErr: true,
 		},
 		{
 			name: "Test claim not allocated",
+			pod:  newPod(NameRef{Name: "test-pod", Namespace: "default"}, withGeneratedClaimRef(claimName)),
 			claims: []client.Object{
 				newClaim(NameRef{Name: claimName, Namespace: "default"}), // no Allocation
 			},
@@ -700,7 +725,7 @@ func TestReconcile(t *testing.T) {
 			pod: newPod(NameRef{Name: "reconcile-pod", Namespace: "test-ns"},
 				withContainer(ImageRef{ContainerName: "target-container", Image: "old-image:v1"}),
 				withContainer(ImageRef{ContainerName: "other-container", Image: "other-image:v1"}),
-				withClaimRef(claimName),
+				withGeneratedClaimRef(claimName),
 			),
 			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
 				withImageConfig(t, ImageRef{
@@ -718,7 +743,7 @@ func TestReconcile(t *testing.T) {
 		{
 			name: "nothing happens if claim has no pending binding results",
 			pod: newPod(NameRef{Name: "pod-no-configs", Namespace: "test-ns"},
-				withClaimRef(claimName),
+				withGeneratedClaimRef(claimName),
 			),
 			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
 				withResult(DeviceRef{
@@ -730,7 +755,7 @@ func TestReconcile(t *testing.T) {
 		{
 			name: "nothing happens if claim has no ImageConfig",
 			pod: newPod(NameRef{Name: "pod-no-image-config", Namespace: "test-ns"},
-				withClaimRef(claimName),
+				withGeneratedClaimRef(claimName),
 			),
 			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"}, func(c *resourceapi.ResourceClaim) {
 				c.Status.Allocation = &resourceapi.AllocationResult{}
@@ -740,7 +765,7 @@ func TestReconcile(t *testing.T) {
 			name: "nothing happens if Pod has DeletionTimestamp set",
 			pod: newPod(NameRef{Name: "pod-deleting", Namespace: "test-ns"},
 				withContainer(ImageRef{ContainerName: "target-container", Image: "old-image:v1"}),
-				withClaimRef(claimName),
+				withGeneratedClaimRef(claimName),
 				func(p *corev1.Pod) {
 					now := metav1.Now()
 					p.DeletionTimestamp = &now
