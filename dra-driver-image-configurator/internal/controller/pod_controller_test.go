@@ -510,16 +510,16 @@ func TestFetchClaims(t *testing.T) {
 	s := createTestScheme()
 	claimName := "test-claim"
 
-	pod := newPod(NameRef{Name: "test-pod", Namespace: "default"}, withClaimRef(claimName))
-
 	tests := []struct {
 		name    string
+		pod     *corev1.Pod
 		claims  []client.Object
 		wantLen int
 		wantErr bool
 	}{
 		{
 			name: "fetches allocated claim referenced by pod",
+			pod:  newPod(NameRef{Name: "test-pod", Namespace: "default"}, withClaimRef(claimName)),
 			claims: []client.Object{
 				newClaim(NameRef{Name: claimName, Namespace: "default"}, func(c *resourceapi.ResourceClaim) {
 					c.Status.Allocation = &resourceapi.AllocationResult{}
@@ -529,15 +529,32 @@ func TestFetchClaims(t *testing.T) {
 		},
 		{
 			name:    "Test claim not found",
+			pod:     newPod(NameRef{Name: "test-pod", Namespace: "default"}, withClaimRef(claimName)),
 			claims:  nil,
 			wantErr: true,
 		},
 		{
 			name: "Test claim not allocated",
+			pod:  newPod(NameRef{Name: "test-pod", Namespace: "default"}, withClaimRef(claimName)),
 			claims: []client.Object{
 				newClaim(NameRef{Name: claimName, Namespace: "default"}), // no Allocation
 			},
 			wantErr: true,
+		},
+		{
+			name: "fetches static allocated claim referenced by pod",
+			pod: newPod(NameRef{Name: "test-pod", Namespace: "default"}, func(p *corev1.Pod) {
+				p.Spec.ResourceClaims = append(
+					p.Spec.ResourceClaims,
+					corev1.PodResourceClaim{Name: "ref", ResourceClaimName: &claimName},
+				)
+			}), // no status.resourceClaimStatuses
+			claims: []client.Object{
+				newClaim(NameRef{Name: claimName, Namespace: "default"}, func(c *resourceapi.ResourceClaim) {
+					c.Status.Allocation = &resourceapi.AllocationResult{}
+				}),
+			},
+			wantLen: 1,
 		},
 	}
 
@@ -546,7 +563,7 @@ func TestFetchClaims(t *testing.T) {
 			fakeClient := fake.NewClientBuilder().WithScheme(s).WithObjects(tc.claims...).Build()
 			r := &PodReconciler{Client: fakeClient}
 
-			claims, err := r.fetchClaims(context.Background(), pod)
+			claims, err := r.fetchClaims(context.Background(), tc.pod)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("fetchClaims() error = %v, wantErr %v", err, tc.wantErr)
 			}
