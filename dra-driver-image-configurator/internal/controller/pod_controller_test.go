@@ -440,7 +440,7 @@ func TestCollectImageConfigs(t *testing.T) {
 				newClaim(NameRef{Name: "c", Namespace: "default"},
 					withImageConfig(t, ImageRef{
 						Source:        "invalid-source",
-						Driver:        "test-driver",
+						Driver:        DriverName,
 						ContainerName: "test-container",
 						Image:         "custom-image: v1",
 					}),
@@ -796,7 +796,7 @@ func TestReconcile(t *testing.T) {
 			name: "nothing happens if claims result has different driver",
 			pod: newPod(NameRef{Name: "pod-no-image-config", Namespace: "test-ns"},
 				withContainer(ImageRef{ContainerName: "target-container", Image: "old-image:v1"}),
-				withClaimRef(claimName),
+				withGeneratedClaimRef(claimName),
 			),
 			//only Claim with different driver is present so it should be ignored
 			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
@@ -927,7 +927,7 @@ func TestReconcile_APIErrors(t *testing.T) {
 	claimName := "reconcile-claim"
 	pod := newPod(NameRef{Name: "reconcile-pod", Namespace: "test-ns"},
 		withContainer(ImageRef{ContainerName: "target-container", Image: "old-image:v1"}),
-		withClaimRef(claimName),
+		withGeneratedClaimRef(claimName),
 	)
 	claim := newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
 		withImageConfig(t, ImageRef{
@@ -935,7 +935,7 @@ func TestReconcile_APIErrors(t *testing.T) {
 			Image:         "new-image:v2",
 		}),
 		withResult(DeviceRef{
-			Driver: "test-driver", Pool: "test-pool", Device: "test-device",
+			Driver: DriverName, Pool: "test-pool", Device: "test-device",
 			BindingConditions: []string{BindingConditionUpdateImage},
 		}),
 	)
