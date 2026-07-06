@@ -225,16 +225,13 @@ func (r *PodReconciler) patchImages(ctx context.Context, pod *corev1.Pod, imageC
 		containerMatched = false
 	}
 	if !needsUpdate {
-		log.Info("image verified", "pod", client.ObjectKeyFromObject(pod))
-		if r.Recorder != nil {
-			r.Recorder.Eventf(pod, nil, corev1.EventTypeNormal, "ImageVerified", "VerifyImage", "Container image(s) already match ResourceClaim config")
-		}
+		log.Info("image verified")
 		return nil
 	}
 	if err := r.Client.Update(ctx, pod); err != nil {
 		return fmt.Errorf("update pod %s/%s: %w", pod.Namespace, pod.Name, err)
 	}
-	log.Info("image patched", "pod", client.ObjectKeyFromObject(pod))
+	log.Info("image patched")
 	if r.Recorder != nil {
 		r.Recorder.Eventf(pod, nil, corev1.EventTypeNormal, "ImagePatched", "PatchImage", "Container image(s) updated based on ResourceClaim config")
 	}
