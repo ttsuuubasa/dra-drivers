@@ -13,11 +13,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"github.com/distribution/reference"
 	imagev1alpha1 "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/api/v1alpha1"
 )
 
 const BindingConditionUpdateImage = "image-configurator.x-k8s.io/image-updated"
 const BindingFailureConditionUpdateImage = "image-configurator.x-k8s.io/image-update-failed"
+
+const DriverName = "image-configurator.x-k8s.io"
 
 // PodReconciler watches Pods nominated to a node and patches their
 // container images based on the associated ResourceClaim config.
@@ -61,7 +64,10 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 		return reconcile.Result{}, nil
 	}
 
-	imageConfigs := collectImageConfigs(claims)
+	imageConfigs, err := collectImageConfigs(claims)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
 	if len(imageConfigs) == 0 {
 		return reconcile.Result{}, nil
 	}
@@ -123,27 +129,40 @@ func collectPendingBindingResults(claims []*resourceapi.ResourceClaim) []claimBi
 }
 
 // collectImageConfigs extracts all ImageConfig objects from the allocated device
-// configs across all claims.
-func collectImageConfigs(claims []*resourceapi.ResourceClaim) []*imagev1alpha1.ImageConfig {
+// configs across all claims. Configs whose Opaque.Driver targets a different
+// driver are skipped so that a ResourceClaim may carry configs for multiple
+// drivers.
+func collectImageConfigs(claims []*resourceapi.ResourceClaim) ([]*imagev1alpha1.ImageConfig, error) {
 	decoder := imagev1alpha1.Codec.UniversalDeserializer()
 	var imageConfigs []*imagev1alpha1.ImageConfig
+	imageMap := make(map[string]string)
 	for _, claim := range claims {
 		for _, cfg := range claim.Status.Allocation.Devices.Config {
-			if cfg.Opaque == nil || cfg.Opaque.Parameters.Raw == nil {
+			if cfg.Opaque == nil || cfg.Opaque.Driver != DriverName {
+				continue
+			}
+			if cfg.Opaque.Parameters.Raw == nil {
 				continue
 			}
 			obj, _, err := decoder.Decode(cfg.Opaque.Parameters.Raw, nil, nil)
 			if err != nil {
-				continue
+				return nil, reconcile.TerminalError(fmt.Errorf("Opaque parameter decode failure: %w", err))
 			}
 			ic, ok := obj.(*imagev1alpha1.ImageConfig)
 			if !ok || ic.ContainerName == "" || ic.Image == "" {
-				continue
+				return nil, reconcile.TerminalError(fmt.Errorf("ContainerName or Image empty"))
 			}
+			if _, err := reference.ParseNormalizedNamed(ic.Image); err != nil {
+				return nil, reconcile.TerminalError(fmt.Errorf("invalid image reference %q in claim %s/%s: %w", ic.Image, claim.Namespace, claim.Name, err))
+			}
+			if image, conflict := imageMap[ic.ContainerName]; conflict && image != ic.Image {
+				return nil, reconcile.TerminalError(fmt.Errorf("conflicting ImageConfigs for container %q: %q vs %q", ic.ContainerName, image, ic.Image))
+			}
+			imageMap[ic.ContainerName] = ic.Image
 			imageConfigs = append(imageConfigs, ic)
 		}
 	}
-	return imageConfigs
+	return imageConfigs, nil
 }
 
 // isBindingConditionAlreadySet checks whether the given condition is already

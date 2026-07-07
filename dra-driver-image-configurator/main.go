@@ -18,8 +18,6 @@ import (
 	resourceslice "k8s.io/dynamic-resource-allocation/resourceslice"
 )
 
-const DriverName = "image-configurator.x-k8s.io"
-
 func main() {
 	ctrl.SetLogger(zap.New())
 	log := ctrl.Log.WithName("setup")
@@ -36,7 +34,7 @@ func main() {
 	_, err = resourceslice.StartController(
 		context.Background(),
 		resourceslice.Options{
-			DriverName: DriverName,
+			DriverName: controller.DriverName,
 			KubeClient: kubeClient,
 			Resources:  makeDriverResources(),
 		},
@@ -48,7 +46,7 @@ func main() {
 
 	mgr, err := ctrl.NewManager(config, ctrl.Options{
 		LeaderElection:   true,
-		LeaderElectionID: DriverName,
+		LeaderElectionID: controller.DriverName,
 		Cache: cache.Options{
 			ByObject: map[client.Object]cache.ByObject{
 				// Cache only pods that the scheduler has nominated to a node.

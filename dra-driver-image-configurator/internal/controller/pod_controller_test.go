@@ -3,6 +3,8 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -315,44 +317,169 @@ func TestCollectPendingBindingResults(t *testing.T) {
 func TestCollectImageConfigs(t *testing.T) {
 	tests := []struct {
 		name              string
-		claim             *resourceapi.ResourceClaim
+		claims            []*resourceapi.ResourceClaim
 		wantLen           int
 		wantContainerName string
 		wantImage         string
+		wantRequeue       bool
+		errMsg            string
 	}{
 		{
-			name: "decodes valid ImageConfig and skips invalid/missing entries",
-			claim: newClaim(NameRef{Name: "c", Namespace: "default"},
-				withImageConfig(t, ImageRef{
-					Source:        "test-source",
-					Driver:        "test-driver",
-					ContainerName: "test-container",
-					Image:         "custom-image:v1",
-				}),
-				// Invalid/incomplete config (empty ContainerName).
-				withImageConfig(t, ImageRef{
-					Source:        "invalid-source",
-					Driver:        "test-driver",
-					ContainerName: "",
-					Image:         "custom-image:v1",
-				}),
-				// Missing opaque.
-				func(c *resourceapi.ResourceClaim) {
-					c.Status.Allocation.Devices.Config = append(
-						c.Status.Allocation.Devices.Config,
-						resourceapi.DeviceAllocationConfiguration{Source: "other-source"},
-					)
-				},
-			),
+			name: "decodes valid ImageConfig and skips missing entries",
+			claims: []*resourceapi.ResourceClaim{
+				newClaim(NameRef{Name: "c", Namespace: "default"},
+					withImageConfig(t, ImageRef{
+						Source:        "test-source",
+						Driver:        DriverName,
+						ContainerName: "test-container",
+						Image:         "custom-image:v1",
+					}),
+					// Missing opaque.
+					func(c *resourceapi.ResourceClaim) {
+						c.Status.Allocation.Devices.Config = append(
+							c.Status.Allocation.Devices.Config,
+							resourceapi.DeviceAllocationConfiguration{Source: "other-source"},
+						)
+					},
+				),
+			},
 			wantLen:           1,
 			wantContainerName: "test-container",
 			wantImage:         "custom-image:v1",
+		},
+		{
+			name: "returns TerminalError in case of opaque parameter decode failure",
+			claims: []*resourceapi.ResourceClaim{
+				newClaim(NameRef{Name: "c", Namespace: "default"},
+					withImageConfig(t, ImageRef{
+						Source:        "test-source",
+						Driver:        DriverName,
+						ContainerName: "test-container",
+						Image:         "custom-image:v1",
+					}),
+					func(c *resourceapi.ResourceClaim) {
+						c.Status.Allocation.Devices.Config = append(
+							c.Status.Allocation.Devices.Config,
+							resourceapi.DeviceAllocationConfiguration{
+								DeviceConfiguration: resourceapi.DeviceConfiguration{
+									Opaque: &resourceapi.OpaqueDeviceConfiguration{
+										Driver:     DriverName,
+										Parameters: runtime.RawExtension{Raw: []byte("not-valid-json")},
+									},
+								},
+							},
+						)
+					},
+				),
+			},
+			wantLen:     0,
+			wantRequeue: false,
+			errMsg:      "Opaque parameter decode failure:",
+		},
+		{
+			name: "skips opaque config targeting another driver",
+			claims: []*resourceapi.ResourceClaim{
+				newClaim(NameRef{Name: "c", Namespace: "default"},
+					withImageConfig(t, ImageRef{
+						Source:        "test-source",
+						Driver:        DriverName,
+						ContainerName: "test-container",
+						Image:         "custom-image:v1",
+					}),
+					// Config for a different driver: must be ignored, even if its
+					// payload is not decodable by this controller.
+					func(c *resourceapi.ResourceClaim) {
+						c.Status.Allocation.Devices.Config = append(
+							c.Status.Allocation.Devices.Config,
+							resourceapi.DeviceAllocationConfiguration{
+								DeviceConfiguration: resourceapi.DeviceConfiguration{
+									Opaque: &resourceapi.OpaqueDeviceConfiguration{
+										Driver:     "other.example.com",
+										Parameters: runtime.RawExtension{Raw: []byte("not-valid-json")},
+									},
+								},
+							},
+						)
+					},
+				),
+			},
+			wantLen:           1,
+			wantContainerName: "test-container",
+			wantImage:         "custom-image:v1",
+		},
+		{
+			name: "returns TerminalError in case of missing ContainerName or Image in ImageConfig",
+			claims: []*resourceapi.ResourceClaim{
+				newClaim(NameRef{Name: "c", Namespace: "default"},
+					withImageConfig(t, ImageRef{
+						Source:        "invalid-source",
+						Driver:        DriverName,
+						ContainerName: "",
+						Image:         "custom-image:v1",
+					}),
+				),
+			},
+			wantLen:     0,
+			wantRequeue: false,
+			errMsg:      "ContainerName or Image empty",
+		},
+		{
+			name: "returns TerminalError in case of multiple ImageConfigs target the same container",
+			claims: []*resourceapi.ResourceClaim{
+				newClaim(NameRef{Name: "c", Namespace: "default"},
+					withImageConfig(t, ImageRef{
+						Source:        "test-source",
+						Driver:        DriverName,
+						ContainerName: "test-container",
+						Image:         "custom-image:v1",
+					}),
+				),
+				newClaim(NameRef{Name: "c", Namespace: "default"},
+					withImageConfig(t, ImageRef{
+						Source:        "test-source",
+						Driver:        DriverName,
+						ContainerName: "test-container",
+						Image:         "custom-image:v2",
+					}),
+				),
+			},
+			wantLen:     0,
+			wantRequeue: false,
+			errMsg:      "conflicting ImageConfigs for container",
+		},
+		{
+			name: "returns TerminalError in case of syntactically incorrect image reference",
+			claims: []*resourceapi.ResourceClaim{
+				newClaim(NameRef{Name: "c", Namespace: "default"},
+					withImageConfig(t, ImageRef{
+						Source:        "invalid-source",
+						Driver:        DriverName,
+						ContainerName: "test-container",
+						Image:         "custom-image: v1",
+					}),
+				),
+			},
+			wantLen:     0,
+			wantRequeue: false,
+			errMsg:      "invalid image reference",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			configs := collectImageConfigs([]*resourceapi.ResourceClaim{tc.claim})
+			configs, err := collectImageConfigs(tc.claims)
+			if len(tc.errMsg) > 0 {
+				if err == nil || !strings.Contains(err.Error(), tc.errMsg) {
+					t.Fatalf("expected error %v, got %v", tc.errMsg, err)
+				}
+				if !tc.wantRequeue && !errors.Is(err, reconcile.TerminalError(nil)) {
+					t.Fatalf("expected TerminalError, got %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("collectImageConfigs failed: %v", err)
+				}
+			}
 			if len(configs) != tc.wantLen {
 				t.Fatalf("expected %d image config(s), got %d", tc.wantLen, len(configs))
 			}
@@ -448,6 +575,7 @@ func TestReconcile(t *testing.T) {
 			),
 			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
 				withImageConfig(t, ImageRef{
+					Driver:        DriverName,
 					ContainerName: "target-container",
 					Image:         "new-image:v2",
 				}),
@@ -493,6 +621,7 @@ func TestReconcile(t *testing.T) {
 			),
 			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
 				withImageConfig(t, ImageRef{
+					Driver:        DriverName,
 					ContainerName: "target-container",
 					Image:         "new-image:v2",
 				}),
