@@ -63,6 +63,7 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.64
+          install-mode: goinstall
           working-directory: ${{ matrix.dir }}
           args: --timeout=5m
 
