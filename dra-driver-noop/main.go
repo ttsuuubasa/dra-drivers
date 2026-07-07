@@ -86,7 +86,7 @@ func main() {
 			continue
 		}
 		klog.InfoS("Starting driver", "name", name)
-		
+
 		pluginDataDir := pluginsDir + "/" + name
 		if err := os.MkdirAll(pluginDataDir, 0750); err != nil {
 			klog.Fatal("Failed to create plugin data directory: ", err)
