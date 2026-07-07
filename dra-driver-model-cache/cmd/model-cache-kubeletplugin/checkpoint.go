@@ -31,7 +31,7 @@ type CheckpointV1 struct {
 	PreparedClaims PreparedClaims `json:"preparedClaims,omitempty"`
 }
 
-func newCheckpoint() *Checkpoint {
+func NewCheckpoint() *Checkpoint {
 	pc := &Checkpoint{
 		Checksum: 0,
 		V1: &CheckpointV1{

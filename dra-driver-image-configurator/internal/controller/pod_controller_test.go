@@ -526,7 +526,7 @@ func TestReconcile(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Reconcile failed: %v", err)
 			}
-			if res.Requeue {
+			if res != (reconcile.Result{}) {
 				t.Errorf("unexpected Requeue")
 			}
 
@@ -569,7 +569,7 @@ func TestReconcile(t *testing.T) {
 			if err != nil {
 				t.Fatalf("second Reconcile failed: %v", err)
 			}
-			if res.Requeue {
+			if res != (reconcile.Result{}) {
 				t.Errorf("unexpected Requeue on second Reconcile")
 			}
 		})
@@ -592,7 +592,7 @@ func TestReconcile_PodNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error for non-existent pod, got %v", err)
 	}
-	if res.Requeue {
+	if res != (reconcile.Result{}) {
 		t.Errorf("unexpected Requeue")
 	}
 }

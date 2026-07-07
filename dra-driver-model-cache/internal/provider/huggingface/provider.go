@@ -99,7 +99,7 @@ func (p *HuggingFaceProvider) DiscoverModels(path string) (string, int64, bool) 
 
 	// Get size by walking the directory
 	var size int64
-	filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() {
 			size += info.Size()
 		}
@@ -192,7 +192,9 @@ func (p *HuggingFaceProvider) PrepareClaims(claimUID string, config runtime.Obje
 					}
 				}
 				if !downloadInProgress {
-					p.cacheManager.UseModel(modelID, claimUID)
+					if _, err := p.cacheManager.UseModel(modelID, claimUID); err != nil {
+						klog.ErrorS(err, "failed to use model in cache manager", "modelID", modelID)
+					}
 				}
 			}
 		} else {
@@ -333,7 +335,7 @@ func (p *HuggingFaceProvider) downloadModel(modelID string) error {
 	return fmt.Errorf("download in progress")
 }
 
-func (p *HuggingFaceProvider) getSnapshotPath(modelID string) (string, error) {
+func (p *HuggingFaceProvider) GetSnapshotPath(modelID string) (string, error) {
 	repo := p.hfApi.Model(modelID)
 	info, err := repo.Info()
 	if err != nil {
