@@ -40,6 +40,35 @@ jobs:
 
           echo "matrix=$JSON" >> "$GITHUB_OUTPUT"
 
+  fmt:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.matrix != '[]' && needs.detect-changes.outputs.matrix != '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: '${{ matrix.dir }}/go.mod'
+          cache: true
+          cache-dependency-path: '${{ matrix.dir }}/go.sum'
+
+      - name: Check code formatting with gofmt
+        run: |
+          UNFORMATTED=$(gofmt -s -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "The following files are not formatted properly with 'gofmt -s -w':"
+            echo "$UNFORMATTED"
+            exit 1
+          fi
+        working-directory: ${{ matrix.dir }}
+
   lint:
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.matrix != '[]' && needs.detect-changes.outputs.matrix != '' }}
