@@ -68,7 +68,7 @@ func (p *GCSProvider) DiscoverModels(path string) (string, int64, bool) {
 
 	// Get size by walking the directory
 	var size int64
-	filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() {
 			size += info.Size()
 		}
@@ -155,7 +155,9 @@ func (p *GCSProvider) PrepareClaims(claimUID string, config runtime.Object, resu
 					}
 				}
 				if !downloadInProgress {
-					p.cacheManager.UseModel(modelID, claimUID)
+					if _, err := p.cacheManager.UseModel(modelID, claimUID); err != nil {
+						klog.ErrorS(err, "failed to use model in cache manager", "modelID", modelID)
+					}
 				}
 			}
 		} else {

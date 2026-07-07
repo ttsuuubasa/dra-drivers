@@ -125,10 +125,14 @@ func (c *Config) PrepareClaims(claimUID string, config runtime.Object, results [
 
 func (c *Config) UnprepareClaims(claimUID string, results []*resourceapi.DeviceRequestAllocationResult) error {
 	if c.huggingface != nil {
-		c.huggingface.UnprepareClaims(claimUID, results)
+		if err := c.huggingface.UnprepareClaims(claimUID, results); err != nil {
+			return err
+		}
 	}
 	if c.gcs != nil {
-		c.gcs.UnprepareClaims(claimUID, results)
+		if err := c.gcs.UnprepareClaims(claimUID, results); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -232,11 +236,6 @@ func newApp() *cli.App {
 			cfg, err := config.LoadConfig(flags.configPath)
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
-			}
-
-			namespace := os.Getenv("NAMESPACE")
-			if namespace == "" {
-				namespace = "default"
 			}
 
 			drvConfig := &Config{

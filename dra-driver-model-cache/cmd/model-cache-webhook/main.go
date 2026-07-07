@@ -27,6 +27,7 @@ import (
 	"github.com/urfave/cli/v2"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	kjson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/klog/v2"
@@ -142,7 +143,7 @@ func validateModelLoader(obj runtime.Object) error {
 }
 
 func readyHandler(w http.ResponseWriter, req *http.Request) {
-	w.Write([]byte("ok"))
+	_, _ = w.Write([]byte("ok"))
 }
 
 func serveResourceClaim(configDecoder runtime.Decoder, validate func(runtime.Object) error, driverName string) func(http.ResponseWriter, *http.Request) {
@@ -171,15 +172,62 @@ func serve(w http.ResponseWriter, r *http.Request, ctx context.Context, admit fu
 
 	respBytes, _ := json.Marshal(responseAdmissionReview)
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(respBytes)
+	_, _ = w.Write(respBytes)
 }
 
 func admitResourceClaimParameters(configDecoder runtime.Decoder, validate func(runtime.Object) error, driverName string) func(context.Context, admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	return func(ctx context.Context, ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
-		// Implementation follows the same logic as example driver, extracting claim/template
-		// and validating opaque configurations for this driver.
-		// For brevity, using a placeholder response here. In actual implementation,
-		// use logic from extractResourceClaim.
+		var opaqueParams []runtime.RawExtension
+		switch ar.Request.Resource {
+		case resourceClaimResourceV1, resourceClaimResourceV1Beta1, resourceClaimResourceV1Beta2:
+			claim, err := extractResourceClaim(ar)
+			if err != nil {
+				return &admissionv1.AdmissionResponse{
+					Allowed: false,
+					Result:  &metav1.Status{Message: fmt.Sprintf("failed to extract ResourceClaim: %v", err)},
+				}
+			}
+			for _, cfg := range claim.Spec.Devices.Config {
+				if cfg.Opaque != nil && cfg.Opaque.Driver == driverName {
+					opaqueParams = append(opaqueParams, cfg.Opaque.Parameters)
+				}
+			}
+		case resourceClaimTemplateResourceV1, resourceClaimTemplateResourceV1Beta1, resourceClaimTemplateResourceV1Beta2:
+			template, err := extractResourceClaimTemplate(ar)
+			if err != nil {
+				return &admissionv1.AdmissionResponse{
+					Allowed: false,
+					Result:  &metav1.Status{Message: fmt.Sprintf("failed to extract ResourceClaimTemplate: %v", err)},
+				}
+			}
+			for _, cfg := range template.Spec.Spec.Devices.Config {
+				if cfg.Opaque != nil && cfg.Opaque.Driver == driverName {
+					opaqueParams = append(opaqueParams, cfg.Opaque.Parameters)
+				}
+			}
+		default:
+			return &admissionv1.AdmissionResponse{Allowed: true}
+		}
+
+		for _, raw := range opaqueParams {
+			if raw.Raw == nil {
+				continue
+			}
+			obj, _, err := configDecoder.Decode(raw.Raw, nil, nil)
+			if err != nil {
+				return &admissionv1.AdmissionResponse{
+					Allowed: false,
+					Result:  &metav1.Status{Message: fmt.Sprintf("failed to decode parameters: %v", err)},
+				}
+			}
+			if err := validate(obj); err != nil {
+				return &admissionv1.AdmissionResponse{
+					Allowed: false,
+					Result:  &metav1.Status{Message: err.Error()},
+				}
+			}
+		}
+
 		return &admissionv1.AdmissionResponse{Allowed: true}
 	}
 }
