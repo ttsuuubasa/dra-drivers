@@ -879,11 +879,12 @@ func TestReconcile_APIErrors(t *testing.T) {
 	)
 	claim := newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
 		withImageConfig(t, ImageRef{
+			Driver:        DriverName,
 			ContainerName: "target-container",
 			Image:         "new-image:v2",
 		}),
 		withResult(DeviceRef{
-			Driver: "test-driver", Pool: "test-pool", Device: "test-device",
+			Driver: DriverName, Pool: "test-pool", Device: "test-device",
 			BindingConditions: []string{BindingConditionUpdateImage},
 		}),
 	)
