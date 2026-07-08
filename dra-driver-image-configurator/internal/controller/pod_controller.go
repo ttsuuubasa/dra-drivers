@@ -69,7 +69,7 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 		return reconcile.Result{}, err
 	}
 	if len(imageConfigs) == 0 {
-		return reconcile.Result{}, nil
+		return reconcile.Result{}, reconcile.TerminalError(fmt.Errorf("no valid ImageConfig found in claims matching the pod containers %s", req.NamespacedName))
 	}
 
 	if err := r.patchImages(ctx, &pod, imageConfigs); err != nil {
@@ -129,6 +129,9 @@ func collectPendingBindingResults(claims []*resourceapi.ResourceClaim) []claimBi
 	for _, claim := range claims {
 		var results []resourceapi.DeviceRequestAllocationResult
 		for _, result := range claim.Status.Allocation.Devices.Results {
+			if result.Driver != DriverName {
+				continue
+			}
 			if !slices.Contains(result.BindingConditions, BindingConditionUpdateImage) {
 				continue
 			}
