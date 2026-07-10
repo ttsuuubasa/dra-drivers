@@ -64,6 +64,9 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 
 	imageConfigs, err := collectImageConfigs(claims)
 	if err != nil {
+		if r.Recorder != nil {
+			r.Recorder.Eventf(&pod, nil, corev1.EventTypeWarning, "ImageUpdateFailed", "CollectImageConfig", "Configuration error in ImageConfig: %v", err)
+		}
 		return reconcile.Result{}, err
 	}
 	if len(imageConfigs) == 0 {
@@ -220,6 +223,9 @@ func (r *PodReconciler) patchImages(ctx context.Context, pod *corev1.Pod, imageC
 			}
 		}
 		if !containerMatched {
+			if r.Recorder != nil {
+				r.Recorder.Eventf(pod, nil, corev1.EventTypeWarning, "ImageUpdateFailed", "PatchImage", "containerName %s in ImageConfig doesn't match any container in pod", ic.ContainerName)
+			}
 			return reconcile.TerminalError(fmt.Errorf("containerName %s in ImageConfig doesn't match any container in pod %s/%s", ic.ContainerName, pod.Namespace, pod.Name))
 		}
 		containerMatched = false
