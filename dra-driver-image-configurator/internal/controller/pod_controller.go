@@ -9,6 +9,7 @@ import (
 	resourceapi "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -64,12 +65,12 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 		return reconcile.Result{}, nil
 	}
 
-	imageConfigs, err := collectImageConfigs(claims)
+	imageConfigs, err := collectImageConfigs(ctx, claims)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 	if len(imageConfigs) == 0 {
-		return reconcile.Result{}, nil
+		return reconcile.Result{}, reconcile.TerminalError(fmt.Errorf("no valid ImageConfig found in claims matching the pod containers %s", req.NamespacedName))
 	}
 
 	if err := r.patchImages(ctx, &pod, imageConfigs); err != nil {
@@ -129,6 +130,9 @@ func collectPendingBindingResults(claims []*resourceapi.ResourceClaim) []claimBi
 	for _, claim := range claims {
 		var results []resourceapi.DeviceRequestAllocationResult
 		for _, result := range claim.Status.Allocation.Devices.Results {
+			if result.Driver != DriverName {
+				continue
+			}
 			if !slices.Contains(result.BindingConditions, BindingConditionUpdateImage) {
 				continue
 			}
@@ -148,12 +152,21 @@ func collectPendingBindingResults(claims []*resourceapi.ResourceClaim) []claimBi
 // configs across all claims. Configs whose Opaque.Driver targets a different
 // driver are skipped so that a ResourceClaim may carry configs for multiple
 // drivers.
-func collectImageConfigs(claims []*resourceapi.ResourceClaim) ([]*imagev1alpha1.ImageConfig, error) {
+func collectImageConfigs(ctx context.Context, claims []*resourceapi.ResourceClaim) ([]*imagev1alpha1.ImageConfig, error) {
+	log := ctrl.LoggerFrom(ctx)
 	decoder := imagev1alpha1.Codec.UniversalDeserializer()
 	var imageConfigs []*imagev1alpha1.ImageConfig
 	imageMap := make(map[string]string)
 	for _, claim := range claims {
 		for _, cfg := range claim.Status.Allocation.Devices.Config {
+			// Skip configs with an empty Requests field: it is impossible to tell
+			// whether such a config was intentionally authored by the user, and
+			// there is no way to determine which device the config applies to.
+			if len(cfg.Requests) == 0 {
+				log.Info("skipping device config with empty Requests; set spec.devices.config[].requests to target specific device requests",
+					"claim", klog.KObj(claim), "source", cfg.Source)
+				continue
+			}
 			if cfg.Opaque == nil || cfg.Opaque.Driver != DriverName {
 				continue
 			}
