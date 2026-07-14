@@ -16,6 +16,9 @@ rules:
     resources: ["resourceclaims"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["resource.k8s.io"]
+    resources: ["resourceclaimtemplates"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["resource.k8s.io"]
     resources: ["resourceclaims/status"]
     verbs: ["get", "update", "patch"]
   - apiGroups: ["resource.k8s.io"]
@@ -87,3 +90,4 @@ spec:
         - name: controller
           image: registry.k8s.io/dra-driver-image-configurator:latest
           imagePullPolicy: IfNotPresent
+          command: ["/controller"]
