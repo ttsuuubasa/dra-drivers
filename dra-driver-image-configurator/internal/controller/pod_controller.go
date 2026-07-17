@@ -19,8 +19,6 @@ import (
 const BindingConditionUpdateImage = "image-configurator.x-k8s.io/image-updated"
 const BindingFailureConditionUpdateImage = "image-configurator.x-k8s.io/image-update-failed"
 
-const DriverName = "image-configurator.x-k8s.io"
-
 // PodReconciler watches Pods nominated to a node and patches their
 // container images based on the associated ResourceClaim config.
 type PodReconciler struct {
@@ -148,24 +146,16 @@ func collectPendingBindingResults(claims []*resourceapi.ResourceClaim) []claimBi
 // driver are skipped so that a ResourceClaim may carry configs for multiple
 // drivers.
 func collectImageConfigs(claims []*resourceapi.ResourceClaim) ([]*imagev1alpha1.ImageConfig, error) {
-	decoder := imagev1alpha1.Codec.UniversalDeserializer()
 	var imageConfigs []*imagev1alpha1.ImageConfig
 	imageMap := make(map[string]string)
 	for _, claim := range claims {
 		for _, cfg := range claim.Status.Allocation.Devices.Config {
-			if cfg.Opaque == nil || cfg.Opaque.Driver != DriverName {
-				continue
-			}
-			if cfg.Opaque.Parameters.Raw == nil {
-				continue
-			}
-			ic, err := imagev1alpha1.DecodeImageConfig(cfg.Opaque.Parameters.Raw, decoder)
-			if err != nil {
-				return nil, reconcile.TerminalError(fmt.Errorf("Opaque parameter decode failure: %w", err))
-			}
-			err = ic.Validate()
+			ic, err := imagev1alpha1.DecodeAndValidateOpaque(cfg.Opaque)
 			if err != nil {
 				return nil, reconcile.TerminalError(err)
+			}
+			if ic == nil {
+				continue
 			}
 			if image, conflict := imageMap[ic.ContainerName]; conflict && image != ic.Image {
 				return nil, reconcile.TerminalError(fmt.Errorf("conflicting ImageConfigs for container %q: %q vs %q", ic.ContainerName, image, ic.Image))

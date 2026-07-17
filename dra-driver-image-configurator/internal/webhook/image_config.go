@@ -10,7 +10,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	imagev1alpha1 "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/api/v1alpha1"
-	controller "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/internal/controller"
 )
 
 type ResourceClaimValidator struct{}
@@ -40,20 +39,13 @@ func (v *ResourceClaimTemplateValidator) Handle(ctx context.Context, req admissi
 }
 
 func validateClaimConfigs(configs []resourceapi.DeviceClaimConfiguration) error {
-	decoder := imagev1alpha1.Codec.UniversalDeserializer()
 	for _, cfg := range configs {
-		if cfg.Opaque == nil || cfg.Opaque.Driver != controller.DriverName {
-			continue
-		}
-		if cfg.Opaque.Parameters.Raw == nil {
-			continue
-		}
-		ic, err := imagev1alpha1.DecodeImageConfig(cfg.Opaque.Parameters.Raw, decoder)
+		ic, err := imagev1alpha1.DecodeAndValidateOpaque(cfg.Opaque)
 		if err != nil {
 			return err
 		}
-		if err := ic.Validate(); err != nil {
-			return err
+		if ic == nil {
+			continue
 		}
 	}
 	return nil

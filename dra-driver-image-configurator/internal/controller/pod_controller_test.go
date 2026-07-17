@@ -339,7 +339,7 @@ func TestCollectImageConfigs(t *testing.T) {
 				newClaim(NameRef{Name: "c", Namespace: "default"},
 					withImageConfig(t, ImageRef{
 						Source:        "test-source",
-						Driver:        DriverName,
+						Driver:        imagev1alpha1.DriverName,
 						ContainerName: "test-container",
 						Image:         "custom-image:v1",
 					}),
@@ -362,7 +362,7 @@ func TestCollectImageConfigs(t *testing.T) {
 				newClaim(NameRef{Name: "c", Namespace: "default"},
 					withImageConfig(t, ImageRef{
 						Source:        "test-source",
-						Driver:        DriverName,
+						Driver:        imagev1alpha1.DriverName,
 						ContainerName: "test-container",
 						Image:         "custom-image:v1",
 					}),
@@ -372,7 +372,7 @@ func TestCollectImageConfigs(t *testing.T) {
 							resourceapi.DeviceAllocationConfiguration{
 								DeviceConfiguration: resourceapi.DeviceConfiguration{
 									Opaque: &resourceapi.OpaqueDeviceConfiguration{
-										Driver:     DriverName,
+										Driver:     imagev1alpha1.DriverName,
 										Parameters: runtime.RawExtension{Raw: []byte("not-valid-json")},
 									},
 								},
@@ -391,7 +391,7 @@ func TestCollectImageConfigs(t *testing.T) {
 				newClaim(NameRef{Name: "c", Namespace: "default"},
 					withImageConfig(t, ImageRef{
 						Source:        "test-source",
-						Driver:        DriverName,
+						Driver:        imagev1alpha1.DriverName,
 						ContainerName: "test-container",
 						Image:         "custom-image:v1",
 					}),
@@ -422,7 +422,7 @@ func TestCollectImageConfigs(t *testing.T) {
 				newClaim(NameRef{Name: "c", Namespace: "default"},
 					withImageConfig(t, ImageRef{
 						Source:        "invalid-source",
-						Driver:        DriverName,
+						Driver:        imagev1alpha1.DriverName,
 						ContainerName: "",
 						Image:         "custom-image:v1",
 					}),
@@ -438,7 +438,7 @@ func TestCollectImageConfigs(t *testing.T) {
 				newClaim(NameRef{Name: "c", Namespace: "default"},
 					withImageConfig(t, ImageRef{
 						Source:        "test-source",
-						Driver:        DriverName,
+						Driver:        imagev1alpha1.DriverName,
 						ContainerName: "test-container",
 						Image:         "custom-image:v1",
 					}),
@@ -446,7 +446,7 @@ func TestCollectImageConfigs(t *testing.T) {
 				newClaim(NameRef{Name: "c", Namespace: "default"},
 					withImageConfig(t, ImageRef{
 						Source:        "test-source",
-						Driver:        DriverName,
+						Driver:        imagev1alpha1.DriverName,
 						ContainerName: "test-container",
 						Image:         "custom-image:v2",
 					}),
@@ -462,7 +462,7 @@ func TestCollectImageConfigs(t *testing.T) {
 				newClaim(NameRef{Name: "c", Namespace: "default"},
 					withImageConfig(t, ImageRef{
 						Source:        "invalid-source",
-						Driver:        DriverName,
+						Driver:        imagev1alpha1.DriverName,
 						ContainerName: "test-container",
 						Image:         "custom-image: v1",
 					}),
@@ -719,7 +719,7 @@ func TestReconcile(t *testing.T) {
 			),
 			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
 				withImageConfig(t, ImageRef{
-					Driver:        DriverName,
+					Driver:        imagev1alpha1.DriverName,
 					ContainerName: "target-container",
 					Image:         "new-image:v2",
 				}),
@@ -765,7 +765,7 @@ func TestReconcile(t *testing.T) {
 			),
 			claim: newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
 				withImageConfig(t, ImageRef{
-					Driver:        DriverName,
+					Driver:        imagev1alpha1.DriverName,
 					ContainerName: "target-container",
 					Image:         "new-image:v2",
 				}),
@@ -879,12 +879,12 @@ func TestReconcile_APIErrors(t *testing.T) {
 	)
 	claim := newClaim(NameRef{Name: claimName, Namespace: "test-ns"},
 		withImageConfig(t, ImageRef{
-			Driver:        DriverName,
+			Driver:        imagev1alpha1.DriverName,
 			ContainerName: "target-container",
 			Image:         "new-image:v2",
 		}),
 		withResult(DeviceRef{
-			Driver: DriverName, Pool: "test-pool", Device: "test-device",
+			Driver: imagev1alpha1.DriverName, Pool: "test-pool", Device: "test-device",
 			BindingConditions: []string{BindingConditionUpdateImage},
 		}),
 	)

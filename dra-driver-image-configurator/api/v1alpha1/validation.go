@@ -4,10 +4,24 @@ import (
 	"fmt"
 
 	"github.com/distribution/reference"
-	"k8s.io/apimachinery/pkg/runtime"
+	resourceapi "k8s.io/api/resource/v1"
 )
 
-func DecodeImageConfig(raw []byte, decoder runtime.Decoder) (*ImageConfig, error) {
+func DecodeAndValidateOpaque(cfg *resourceapi.OpaqueDeviceConfiguration) (*ImageConfig, error) {
+	if cfg == nil || cfg.Driver != DriverName || cfg.Parameters.Raw == nil {
+		return nil, nil
+	}
+	ic, err := decodeImageConfig(cfg.Parameters.Raw)
+	if err != nil {
+		return nil, fmt.Errorf("Opaque parameter decode failure: %w", err)
+	}
+	if err := ic.validate(); err != nil {
+		return nil, err
+	}
+	return ic, nil
+}
+
+func decodeImageConfig(raw []byte) (*ImageConfig, error) {
 	obj, _, err := decoder.Decode(raw, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode ImageConfig parameters: %w", err)
@@ -19,7 +33,7 @@ func DecodeImageConfig(raw []byte, decoder runtime.Decoder) (*ImageConfig, error
 	return ic, nil
 }
 
-func (ic *ImageConfig) Validate() error {
+func (ic *ImageConfig) validate() error {
 	if ic.ContainerName == "" || ic.Image == "" {
 		return fmt.Errorf("ContainerName or Image empty")
 	}
