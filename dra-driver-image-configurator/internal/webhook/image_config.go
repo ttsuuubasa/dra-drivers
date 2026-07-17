@@ -2,7 +2,6 @@ package webhook
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -12,11 +11,13 @@ import (
 	imagev1alpha1 "github.com/gke-labs/dra-drivers/dra-driver-image-configurator/api/v1alpha1"
 )
 
-type ResourceClaimValidator struct{}
+type ResourceClaimValidator struct {
+	Decoder admission.Decoder
+}
 
 func (v *ResourceClaimValidator) Handle(ctx context.Context, req admission.Request) admission.Response {
 	claim := &resourceapi.ResourceClaim{}
-	if err := json.Unmarshal(req.Object.Raw, claim); err != nil {
+	if err := v.Decoder.Decode(req, claim); err != nil {
 		return admission.Errored(http.StatusBadRequest, fmt.Errorf("decode ResourceClaim: %w", err))
 	}
 	if err := validateClaimConfigs(claim.Spec.Devices.Config); err != nil {
@@ -25,11 +26,13 @@ func (v *ResourceClaimValidator) Handle(ctx context.Context, req admission.Reque
 	return admission.Allowed("")
 }
 
-type ResourceClaimTemplateValidator struct{}
+type ResourceClaimTemplateValidator struct {
+	Decoder admission.Decoder
+}
 
 func (v *ResourceClaimTemplateValidator) Handle(ctx context.Context, req admission.Request) admission.Response {
 	template := &resourceapi.ResourceClaimTemplate{}
-	if err := json.Unmarshal(req.Object.Raw, template); err != nil {
+	if err := v.Decoder.Decode(req, template); err != nil {
 		return admission.Errored(http.StatusBadRequest, fmt.Errorf("decode ResourceClaimTemplate: %w", err))
 	}
 	if err := validateClaimConfigs(template.Spec.Spec.Devices.Config); err != nil {

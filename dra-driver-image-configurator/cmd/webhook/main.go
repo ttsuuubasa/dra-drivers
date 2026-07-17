@@ -24,11 +24,12 @@ func main() {
 	}
 
 	webhookServer := mgr.GetWebhookServer()
+	webhookDecoder := admission.NewDecoder(mgr.GetScheme())
 	webhookServer.Register("/validate-resourceclaim", &admission.Webhook{
-		Handler: &webhookvalidation.ResourceClaimValidator{},
+		Handler: &webhookvalidation.ResourceClaimValidator{Decoder: webhookDecoder},
 	})
 	webhookServer.Register("/validate-resourceclaimtemplate", &admission.Webhook{
-		Handler: &webhookvalidation.ResourceClaimTemplateValidator{},
+		Handler: &webhookvalidation.ResourceClaimTemplateValidator{Decoder: webhookDecoder},
 	})
 
 	log.Info("starting webhook server")
