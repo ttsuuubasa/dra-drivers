@@ -96,7 +96,7 @@ webhooks:
       - apiGroups: ["resource.k8s.io"]
         apiVersions: ["v1"]
         resources: ["resourceclaims"]
-        operations: ["CREATE", "UPDATE"]
+        operations: ["CREATE"]
     clientConfig:
       service:
         name: dra-driver-image-configurator-webhook
@@ -110,7 +110,7 @@ webhooks:
       - apiGroups: ["resource.k8s.io"]
         apiVersions: ["v1"]
         resources: ["resourceclaimtemplates"]
-        operations: ["CREATE", "UPDATE"]
+        operations: ["CREATE"]
     clientConfig:
       service:
         name: dra-driver-image-configurator-webhook
