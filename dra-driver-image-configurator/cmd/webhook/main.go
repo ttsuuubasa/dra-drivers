@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -31,6 +33,7 @@ func main() {
 	webhookServer.Register("/validate-resourceclaimtemplate", &admission.Webhook{
 		Handler: &webhookvalidation.ResourceClaimTemplateValidator{Decoder: webhookDecoder},
 	})
+	webhookServer.Register("/readyz", &healthz.CheckHandler{Checker: healthz.Ping})
 
 	log.Info("starting webhook server")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
