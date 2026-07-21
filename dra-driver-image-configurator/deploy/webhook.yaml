@@ -1,3 +1,10 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dra-driver-image-configurator-webhook
+  namespace: kube-system
+---
+
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -50,7 +57,7 @@ spec:
       labels:
         app: dra-driver-image-configurator-webhook
     spec:
-      serviceAccountName: dra-driver-image-configurator
+      serviceAccountName: dra-driver-image-configurator-webhook
       containers:
         - name: webhook
           image: registry.k8s.io/dra-driver-image-configurator:latest
