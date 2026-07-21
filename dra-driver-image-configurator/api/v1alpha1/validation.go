@@ -11,24 +11,16 @@ func DecodeAndValidateOpaque(cfg *resourceapi.OpaqueDeviceConfiguration) (*Image
 	if cfg == nil || cfg.Driver != DriverName || cfg.Parameters.Raw == nil {
 		return nil, nil
 	}
-	ic, err := decodeImageConfig(cfg.Parameters.Raw)
+	obj, _, err := decoder.Decode(cfg.Parameters.Raw, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Opaque parameter decode failure: %w", err)
 	}
-	if err := ic.validate(); err != nil {
-		return nil, err
-	}
-	return ic, nil
-}
-
-func decodeImageConfig(raw []byte) (*ImageConfig, error) {
-	obj, _, err := decoder.Decode(raw, nil, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode ImageConfig parameters: %w", err)
-	}
 	ic, ok := obj.(*ImageConfig)
 	if !ok {
-		return nil, fmt.Errorf("unexpected type in ImageConfig parameters: %T", obj)
+		return nil, fmt.Errorf("Opaque parameter decode failure: unexpected type in ImageConfig parameters: %T", obj)
+	}
+	if err := ic.validate(); err != nil {
+		return nil, err
 	}
 	return ic, nil
 }
